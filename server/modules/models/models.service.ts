@@ -138,6 +138,11 @@ export class ModelsService {
         if (platformKey === 'bailian' && items.length > 0) {
           items = await this.mergeBailianFreeQuota(items);
         }
+        // 免费模型标记：智谱/百炼官方免费模型以 Flash 命名（GLM-4-Flash、qwen3.8-flash 等）；
+        // 已由免费额度接口标记 isFree 的模型保持不变
+        if ((platformKey === 'zhipu' || platformKey === 'bailian') && items.length > 0) {
+          items = items.map((m) => (m.isFree ? m : { ...m, isFree: /flash/i.test(m.id) }));
+        }
       } else if (apiType === 'gemini') {
         items = await fetchGeminiModels(apiKey);
       }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import { toast } from 'sonner';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangleIcon, DatabaseIcon, SearchIcon } from 'lucide-react';
+import { AlertTriangleIcon, DatabaseIcon, SearchIcon, TrophyIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -31,6 +31,33 @@ import {
 } from './models-table';
 import type { SortKey } from './models-table';
 
+interface FreeModelRow {
+  id: string;
+  platform: string;
+  model: string;
+  score: number;
+  tier: '旗舰' | '主流' | '轻量' | '入门';
+  freeQuotaRemaining?: number;
+  freeQuotaTotal?: number;
+  freeQuotaUsagePercent?: number;
+  freeQuotaExpires?: string;
+  freeQuotaAutoStop?: boolean;
+}
+
+const tierStyle: Record<string, string> = {
+  旗舰: 'bg-violet-50 text-violet-700 border-violet-200',
+  主流: 'bg-blue-50 text-blue-700 border-blue-200',
+  轻量: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  入门: 'bg-gray-50 text-gray-500 border-[#e4e7ed]',
+};
+
+const compact = (value: number | undefined) => {
+  if (value == null) return '—';
+  if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
+  if (value >= 1e3) return `${(value / 1e3).toFixed(1)}K`;
+  return String(value);
+};
+
 const ModelsPage = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -41,6 +68,8 @@ const ModelsPage = () => {
   const [modelData, setModelData] = useState<ModelListResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [freeModels, setFreeModels] = useState<FreeModelRow[]>([]);
+  const [freeModelsLoading, setFreeModelsLoading] = useState(false);
 
   // Filter state：默认只看免费 + 按价格升序（比价模式）
   const [keyword, setKeyword] = useState('');
@@ -116,6 +145,23 @@ const ModelsPage = () => {
   useEffect(() => {
     loadModels();
   }, [loadModels]);
+
+  // 跨平台免费模型总览（按性能排序）
+  const loadFreeModels = useCallback(async () => {
+    try {
+      setFreeModelsLoading(true);
+      const res = await fetch('/api/gateway').then((r) => r.json());
+      setFreeModels(res.freeModels ?? []);
+    } catch {
+      // 总览加载失败不打断页面
+    } finally {
+      setFreeModelsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFreeModels();
+  }, [loadFreeModels]);
 
   const handleDoubaoFetch = useCallback(async () => {
     try {
@@ -229,6 +275,92 @@ const ModelsPage = () => {
               共 {platformsLoading ? '...' : platforms.length + 1} 个平台
             </span>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* 跨平台免费模型总览（按性能排序） */}
+      <Card className="rounded-lg border-[#e4e7ed] bg-white shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between p-5 pb-3">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold">
+            <TrophyIcon className="size-4 text-amber-500" />
+            跨平台免费模型总览 · 按性能排序
+            <span className="ml-1 text-xs font-normal text-gray-400">
+              共 {freeModelsLoading ? '...' : freeModels.length} 个免费可用模型
+            </span>
+          </CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={loadFreeModels}
+          >
+            刷新
+          </Button>
+        </CardHeader>
+        <CardContent className="p-5 pt-0">
+          {freeModels.length === 0 ? (
+            <p className="py-4 text-center text-sm text-gray-400">
+              {freeModelsLoading ? '加载中...' : '暂无免费模型（请先在平台管理中配置并检测）'}
+            </p>
+          ) : (
+            <div className="max-h-[420px] space-y-1 overflow-y-auto pr-1">
+              {freeModels.map((m, index) => {
+                const used =
+                  m.freeQuotaTotal && m.freeQuotaRemaining != null
+                    ? (m.freeQuotaRemaining / m.freeQuotaTotal) * 100
+                    : null;
+                return (
+                  <button
+                    key={m.id}
+                    className="flex w-full flex-wrap items-center gap-3 rounded-lg border border-[#e4e7ed] px-3 py-2 text-left transition-colors hover:border-[#1890ff]/40 hover:bg-blue-50/40"
+                    onClick={() => navigate(`/platforms/${m.platform}`)}
+                    title="点击进入平台详情"
+                  >
+                    <span className="w-7 shrink-0 text-center text-sm text-gray-400">
+                      {index + 1}
+                    </span>
+                    <span className="w-20 shrink-0 truncate text-sm font-medium text-gray-700">
+                      {m.platform}
+                    </span>
+                    <code className="min-w-0 flex-1 truncate text-sm text-gray-600">
+                      {m.model}
+                    </code>
+                    <span
+                      className={`shrink-0 rounded border px-1.5 py-0.5 text-[11px] font-medium ${tierStyle[m.tier] ?? tierStyle['入门']}`}
+                      title={`性能评分 ${m.score}`}
+                    >
+                      {m.tier} · {m.score}
+                    </span>
+                    <span className="w-40 shrink-0 text-right text-xs text-gray-500">
+                      {used != null ? (
+                        <>
+                          <span className="mr-1 inline-block h-1.5 w-14 overflow-hidden rounded-full bg-gray-100 align-middle">
+                            <span
+                              className={`block h-full rounded-full ${used > 80 ? 'bg-red-400' : used > 50 ? 'bg-amber-400' : 'bg-emerald-400'}`}
+                              style={{ width: `${Math.min(100, used)}%` }}
+                            />
+                          </span>
+                          剩 {compact(m.freeQuotaRemaining)}
+                          {m.freeQuotaAutoStop && (
+                            <span className="ml-1 rounded bg-amber-50 px-1 text-[10px] text-amber-600">
+                              用完即停
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-emerald-600">永久免费</span>
+                      )}
+                    </span>
+                    <span className="w-24 shrink-0 text-right text-[11px] text-gray-400">
+                      {m.freeQuotaExpires && m.freeQuotaExpires !== '2099-01-01'
+                        ? `到期 ${m.freeQuotaExpires}`
+                        : '长期有效'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
 
