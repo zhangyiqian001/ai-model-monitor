@@ -4,7 +4,6 @@ import {
   LayoutDashboardIcon,
   ListIcon,
   ServerIcon,
-  NetworkIcon,
   SettingsIcon,
   ShieldCheckIcon,
 } from 'lucide-react';
@@ -26,7 +25,6 @@ const navGroups = [
   {
     label: '渠道与连接',
     items: [
-      { path: '/gateway', label: '聚合渠道', icon: NetworkIcon, end: false },
       { path: '/platforms', label: '平台管理', icon: ServerIcon, end: false },
     ],
   },
