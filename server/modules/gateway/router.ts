@@ -1,6 +1,6 @@
 import {randomUUID} from 'crypto';
-export interface Candidate { id:string; platform:string; model:string; key:string; base:string; auth:string; }
-export interface Attempt { route:string; status:number; outcome:string; at:string; }
+export interface Candidate { id:string; platform:string; model:string; key:string; base:string; auth:string; score?:number; explicit?:boolean; }
+export interface Attempt { route:string; status:number; outcome:string; at:string; tokens?:{prompt:number;completion:number;total:number}; }
 export function failureKind(status:number,data:any):string {
  if(status===504)return 'timeout';
  const code=String(data?.error?.code||data?.error?.type||'').toLowerCase(),msg=String(data?.error?.message||'').toLowerCase();
@@ -37,7 +37,7 @@ export async function routeCompletion(candidates:Candidate[],input:any,cooldowns
  const attempts:Attempt[]=[],start=clock();
  for(const c of candidates){if((cooldowns[c.id]||0)>clock())continue;if(clock()-start>=90000)break;
   let response;try{response=await request(c,input,AbortSignal.timeout(Math.max(1,Math.min(60000,90000-(clock()-start)))));}catch(error:any){response={status:error?.name==='TimeoutError'||error?.name==='AbortError'?504:0,data:{},retryAfter:null};}
-  if(response.status>=200&&response.status<300&&!response.data?.error){const a={route:c.id,status:response.status,outcome:'success',at:new Date().toISOString()};attempts.push(a);log(a);return {...response.data,id:'chatcmpl-'+randomUUID(),object:'chat.completion',created:Math.floor(clock()/1000),model:c.id,gateway:{route:c.id,attempts}};}
+  if(response.status>=200&&response.status<300&&!response.data?.error){const u=response.data?.usage,tokens=u&&typeof u==='object'?{prompt:Number(u.prompt_tokens||0),completion:Number(u.completion_tokens||0),total:Number(u.total_tokens||0)}:undefined;const a={route:c.id,status:response.status,outcome:'success',at:new Date().toISOString(),...tokens?{tokens}:{}};attempts.push(a);log(a);return {...response.data,id:'chatcmpl-'+randomUUID(),object:'chat.completion',created:Math.floor(clock()/1000),model:c.id,gateway:{route:c.id,attempts}};}
   const kind=failureKind(response.status,response.data),a={route:c.id,status:response.status,outcome:kind,at:new Date().toISOString()};attempts.push(a);log(a);
   if(kind==='invalid_request')throw Object.assign(new Error('上游拒绝请求，请检查模型和请求参数'),{status:400,attempts});
   const raw=response.retryAfter,seconds=raw?(Number.isFinite(Number(raw))?Number(raw):Math.ceil((Date.parse(raw)-clock())/1000)):0;

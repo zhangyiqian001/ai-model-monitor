@@ -1,4 +1,5 @@
 import {eligible,orderRoutes} from './route-policy';
+import {rankModel} from './model-ranking';
 import {Module,Injectable,Controller,Get,Post,Put,Body,Req,Res} from '@nestjs/common';
 import type {Request,Response} from 'express';
 import {randomBytes,timingSafeEqual} from 'crypto';
@@ -33,16 +34,29 @@ export class GatewayService{
  async candidates(){const result:Candidate[]=[];const status=await this.platforms.listPlatformsWithConfig(LOCAL_USER_ID,{});for(const p of status.items){if(!supported(p)||!eligible(p))continue;const c=await this.platforms.getRawConfig(LOCAL_USER_ID,p.key);if(c?.isEnabled&&c.apiKeyEncrypted){
   const base={key:c.apiKeyEncrypted,base:p.apiBaseUrl,auth:p.authType};
   const configured=(this.config.routes[p.key]||'').trim();
-  if(configured){result.push({id:p.key+'::'+configured,platform:p.key,model:configured,...base});continue;}
+  if(configured){result.push({id:p.key+'::'+configured,platform:p.key,model:configured,...base,score:rankModel(configured).score,explicit:true});continue;}
   // 未显式指定模型：动态取平台模型列表（文本模型优先 → 免费优先 → 剩余额度多优先），用完一个自动切下一个
   const models=await this.platformModels(p);
   const sortRank=(m:any)=>(m.freeQuotaType==='Text'?0:1);
   const picks=models.filter((m:any)=>m.isFree&&!m.isDeprecated).sort((a:any,b:any)=>sortRank(a)-sortRank(b)||(b.freeQuotaRemaining??0)-(a.freeQuotaRemaining??0)).slice(0,MAX_MODELS_PER_PLATFORM);
   const list=picks.length?picks:models.filter((m:any)=>!m.isDeprecated).slice(0,MAX_MODELS_PER_PLATFORM);
-  for(const m of list){if(!m.id)continue;result.push({id:p.key+'::'+m.id,platform:p.key,model:m.id,...base});}
- }}return orderRoutes(result,this.config.order);}
+  for(const m of list){if(!m.id)continue;result.push({id:p.key+'::'+m.id,platform:p.key,model:m.id,...base,score:rankModel(m.id).score});}
+ }}// 全局按模型性能从高到低排序；用户显式指定的固定模型置顶（explicit 优先）
+ return result.sort((a,b)=>(b.explicit?1:0)-(a.explicit?1:0)||(b.score??0)-(a.score??0));}
 
- async state(){const candidates=await this.candidates();const unsupported:string[]=[];for(const p of this.platforms.getAllPlatforms()){const c=await this.platforms.getRawConfig(LOCAL_USER_ID,p.key);if(c?.isEnabled&&c.apiKeyEncrypted&&!supported(p))unsupported.push(p.key);}const all=await this.platforms.listPlatformsWithConfig(LOCAL_USER_ID,{});const waiting=all.items.filter(p=>supported(p)&&p.config?.hasKey&&p.config?.isEnabled&&!eligible(p)).map(p=>({platform:p.key,name:p.name,status:p.latestHealthStatus}));const grouped:any[]=[];for(const c of candidates){let g=grouped.find(x=>x.platform===c.platform);if(!g){g={platform:c.platform,model:c.model,candidates:[],order:this.config.order.indexOf(c.platform)};grouped.push(g);}g.candidates.push({id:c.id,model:c.model,cooldown_until:this.cooldowns[c.id]||0});g.model=c.model;}return {waiting,unsupported,model:'auto',streaming:false,routes:grouped.map((g,i)=>({...g,order:g.order<0?999:g.order})),order:this.config.order,overrides:this.config.routes,logs:this.logs.slice(-100).reverse(),key_configured:true};}
+ async state(){const candidates=await this.candidates();const unsupported:string[]=[];for(const p of this.platforms.getAllPlatforms()){const c=await this.platforms.getRawConfig(LOCAL_USER_ID,p.key);if(c?.isEnabled&&c.apiKeyEncrypted&&!supported(p))unsupported.push(p.key);}const all=await this.platforms.listPlatformsWithConfig(LOCAL_USER_ID,{});const waiting=all.items.filter(p=>supported(p)&&p.config?.hasKey&&p.config?.isEnabled&&!eligible(p)).map(p=>({platform:p.key,name:p.name,status:p.latestHealthStatus}));const grouped:any[]=[];const modelRoutes:any[]=[];for(const c of candidates){const rank=rankModel(c.model);modelRoutes.push({id:c.id,platform:c.platform,model:c.model,score:rank.score,tier:rank.tier,explicit:!!c.explicit,cooldown_until:this.cooldowns[c.id]||0});let g=grouped.find(x=>x.platform===c.platform);if(!g){g={platform:c.platform,model:c.model,candidates:[],order:this.config.order.indexOf(c.platform)};grouped.push(g);}g.candidates.push({id:c.id,model:c.model,cooldown_until:this.cooldowns[c.id]||0});g.model=c.model;}const overview=this.overview(candidates.length);return {waiting,unsupported,model:'auto',streaming:false,overview,routes:grouped.map((g,i)=>({...g,order:g.order<0?999:g.order})),modelRoutes,order:this.config.order,overrides:this.config.routes,logs:this.logs.slice(-100).reverse(),key_configured:true};}
+
+ /** 概览统计：从网关调用日志聚合（可接入模型/回合/Token/近7天用量） */
+ private overview(accessibleModels:number){
+  const now=new Date();const day=(ts:number)=>new Date(ts).toISOString().slice(0,10);
+  const seven:any[]=[];for(let i=6;i>=0;i--){const d=new Date(now);d.setDate(d.getDate()-i);seven.push({date:(d.getMonth()+1)+'/'+d.getDate(),day:day(d.getTime()),input:0,output:0});}
+  let userTurns=0,totalTokens=0,inputTokens=0,outputTokens=0,unfinished=0;
+  for(const a of this.logs){
+   if(a.outcome==='success'){userTurns++;if(a.tokens){inputTokens+=a.tokens.prompt||0;outputTokens+=a.tokens.completion||0;totalTokens+=a.tokens.total||0;}const d=day(Date.parse(a.at));const slot=seven.find(s=>s.day===d);if(slot){slot.input+=a.tokens?.prompt||0;slot.output+=a.tokens?.completion||0;}}
+   else unfinished++;
+  }
+  return {accessibleModels,userTurns,totalTokens,inputTokens,outputTokens,unfinishedTurns:unfinished,last7Days:seven.map(({day,...r})=>r)};
+ }
  async chat(input:any){if(!input||typeof input.model!=='string'||!Array.isArray(input.messages)||!input.messages.length||input.messages.length>100||input.messages.some((m:any)=>!m||!['system','user','assistant'].includes(m.role)||typeof m.content!=='string'||m.content.length>100000)||input.stream===true||input.max_tokens!==undefined&&(!Number.isInteger(input.max_tokens)||input.max_tokens<1||input.max_tokens>8192)||input.temperature!==undefined&&(!Number.isFinite(input.temperature)||input.temperature<0||input.temperature>2))throw Object.assign(new Error('仅支持文本 messages、非流式请求及 max_tokens 1–8192'),{status:400});if(Object.keys(input).some(k=>!['model','messages','stream','max_tokens','temperature'].includes(k)))throw Object.assign(new Error('暂不支持 tools、多模态或其他扩展参数'),{status:400});let candidates=await this.candidates();if(input.model!=='auto')candidates=candidates.filter(c=>c.id===input.model);if(!candidates.length)throw Object.assign(new Error('没有检测正常且已启用的兼容模型，或模型 ID 不存在'),{status:404});try{return await routeCompletion(candidates,input,this.cooldowns,a=>{this.logs.push(a);this.logs=this.logs.slice(-300);fs.writeFileSync(path.join(this.directory,'gateway-log.json'),JSON.stringify(this.logs),{mode:0o600});});}finally{fs.writeFileSync(path.join(this.directory,'gateway-state.json'),JSON.stringify(this.cooldowns),{mode:0o600});}}
 }
 @Controller()

@@ -1,7 +1,75 @@
 import React from 'react';
-import {DndContext,closestCenter,PointerSensor,KeyboardSensor,useSensor,useSensors} from '@dnd-kit/core';
-import {SortableContext,useSortable,verticalListSortingStrategy,sortableKeyboardCoordinates,arrayMove} from '@dnd-kit/sortable';
-import {CSS} from '@dnd-kit/utilities';
-function Row({channel,index,routes,onModel,busy}:any){const {attributes,listeners,setNodeRef,transform,transition,isDragging}=useSortable({id:channel.platform,disabled:busy});const cooling=(c:any)=>c.cooldown_until>Date.now();return <div ref={setNodeRef} style={{transform:CSS.Transform.toString(transform),transition,position:'relative',zIndex:isDragging?2:0,opacity:isDragging?.8:1}} className="flex flex-wrap items-center gap-4 rounded-lg border bg-white p-4" data-route={channel.platform}><button type="button" {...attributes} {...listeners} aria-label={'拖动排序 '+channel.platform} style={{touchAction:'none',cursor:busy?'default':'grab'}} className="rounded border px-3 py-2 text-lg focus:ring-2 focus:ring-blue-500" disabled={busy}>⠿</button><span className="text-sm text-gray-500">{index+1}</span><strong className="min-w-[100px]">{channel.platform}</strong><label className="min-w-0 flex-1 text-sm">模型 ID<input className="w-full rounded-md border border-[#e4e7ed] px-3 py-2 text-sm" aria-label={channel.platform+' 模型 ID'} placeholder="留空 = 自动选免费模型" value={routes[channel.platform]??''} onChange={e=>onModel(channel.platform,e.target.value)}/></label><span className="text-sm text-emerald-700">{channel.candidates?.some(cooling)?'部分模型冷却中':'检测正常 · 已自动加入'}</span></div>;}
-export default function GatewayRouteList({channels,order,routes,onOrder,onModel,busy}:any){const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:6}}),useSensor(KeyboardSensor,{coordinateGetter:sortableKeyboardCoordinates}));const rank=(key:string)=>{const i=order.indexOf(key);return i<0?999:i;};const sorted=[...channels].sort((a,b)=>rank(a.platform)-rank(b.platform));return <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={({active,over})=>{if(!over||active.id===over.id)return;const ids=sorted.map(c=>c.platform),moved=arrayMove(ids,ids.indexOf(String(active.id)),ids.indexOf(String(over.id)));const slots=new Set(ids);let i=0;const next=order.map((id:string)=>slots.has(id)?moved[i++]:id);for(const id of moved.slice(i))next.push(id);onOrder(next);}}><SortableContext items={sorted.map(c=>c.platform)} strategy={verticalListSortingStrategy}><div className="space-y-3" aria-label="自动切换优先顺序">{sorted.map((c,index)=><div key={c.platform} className="space-y-2"><Row channel={c} index={index} routes={routes} onModel={onModel} busy={busy}/>{c.candidates&&c.candidates.length>1&&<div className="ml-12 flex flex-wrap gap-1.5">{(c.candidates as any[]).map((m:any)=>{const cool=coolingOf(m);return <span key={m.id} className={cool?'rounded bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700 border border-amber-200':'rounded bg-gray-50 px-2 py-0.5 text-[11px] text-gray-600 border border-[#e4e7ed]'} title={cool?'冷却至 '+new Date(m.cooldown_until).toLocaleString():m.id}>{cool?'冷却 · ':''}{m.model}</span>;})}<span className="text-[11px] text-gray-400">未填写模型 ID 时，按此顺序自动切换（额度用尽自动换下一个）</span></div>}</div>)}</div></SortableContext></DndContext>;}
-function coolingOf(m:any){return m.cooldown_until>Date.now();}
+
+const tierStyle: Record<string, string> = {
+  旗舰: 'bg-violet-50 text-violet-700 border-violet-200',
+  主流: 'bg-blue-50 text-blue-700 border-blue-200',
+  轻量: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  入门: 'bg-gray-50 text-gray-500 border-[#e4e7ed]',
+};
+
+export default function GatewayRouteList({ modelRoutes, platforms, routes, onModel, busy }: any) {
+  const cooled = (m: any) => m.cooldown_until > Date.now();
+  return (
+    <div className="space-y-4">
+      {/* 固定模型设置（平台级） */}
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        {platforms.map((platform: string) => (
+          <label key={platform} className="flex min-w-0 items-center gap-2 text-sm">
+            <span className="w-20 shrink-0 truncate text-gray-500">{platform}</span>
+            <input
+              className="w-full rounded-md border border-[#e4e7ed] px-3 py-2 text-sm"
+              aria-label={`${platform} 固定模型 ID`}
+              placeholder="留空 = 按性能自动选择"
+              value={routes[platform] ?? ''}
+              onChange={(e) => onModel(platform, e.target.value)}
+            />
+          </label>
+        ))}
+      </div>
+      {platforms.length > 0 && (
+        <p className="text-xs text-gray-400">
+          在输入框填写模型 ID 可固定使用该模型，固定模型在所有自动候选之前优先尝试。
+        </p>
+      )}
+
+      {/* 模型级切换顺序（按性能从高到低） */}
+      <div className="space-y-2" aria-label="模型切换顺序（按性能排序）">
+        {modelRoutes.length === 0 && (
+          <p className="text-gray-500">暂无正常渠道，请先在平台管理中配置并检测。</p>
+        )}
+        {modelRoutes.map((m: any, index: number) => (
+          <div
+            key={m.id}
+            className="flex flex-wrap items-center gap-3 rounded-lg border border-[#e4e7ed] bg-white px-4 py-2.5"
+          >
+            <span className="w-6 shrink-0 text-center text-sm text-gray-400">{index + 1}</span>
+            <span className="w-20 shrink-0 truncate text-sm font-medium text-gray-700">
+              {m.platform}
+            </span>
+            <code className="min-w-0 flex-1 truncate text-sm text-gray-600">{m.model}</code>
+            <span
+              className={`shrink-0 rounded border px-1.5 py-0.5 text-[11px] font-medium ${tierStyle[m.tier] ?? tierStyle['入门']}`}
+              title={`性能评分 ${m.score}`}
+            >
+              {m.tier} · {m.score}
+            </span>
+            {m.explicit && (
+              <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 border border-amber-200">
+                固定
+              </span>
+            )}
+            <span className="w-24 shrink-0 text-right text-xs text-gray-400">
+              {cooled(m) ? (
+                <span className="text-amber-600" title={`冷却至 ${new Date(m.cooldown_until).toLocaleString()}`}>
+                  冷却中
+                </span>
+              ) : (
+                <span className="text-emerald-600">正常</span>
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
