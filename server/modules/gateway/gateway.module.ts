@@ -37,12 +37,12 @@ export class GatewayService{
  async candidates(){const result:Candidate[]=[];const status=await this.platforms.listPlatformsWithConfig(LOCAL_USER_ID,{});for(const p of status.items){if(!supported(p)||!eligible(p))continue;const c=await this.platforms.getRawConfig(LOCAL_USER_ID,p.key);if(c?.isEnabled&&c.apiKeyEncrypted){
   const base={key:c.apiKeyEncrypted,base:p.apiBaseUrl,auth:p.authType};
   const configured=(this.config.routes[p.key]||'').trim();
-  if(configured){result.push({id:p.key+'::'+configured,platform:p.key,model:configured,...base,score:rankModel(configured).score,explicit:true});continue;}
-  // 未显式指定模型：动态取平台模型列表，全部免费可用文本模型按 文本优先 → 性能优先 → 剩余额度多优先 排序，用完一个自动切下一个
   const models=await this.platformModels(p);
+  // 显式指定的模型置顶（explicit），同时保留该平台其他免费模型用于额度用尽后的自动回落
+  if(configured){result.push({id:p.key+'::'+configured,platform:p.key,model:configured,...base,score:rankModel(configured).score,explicit:true});}
   const sortRank=(m:any)=>(m.freeQuotaType==='Text'?0:1);
-  const picks=models.filter((m:any)=>m.isFree&&!m.isDeprecated&&isChatModel(m)).sort((a:any,b:any)=>sortRank(a)-sortRank(b)||rankModel(b.id).score-rankModel(a.id).score||(b.freeQuotaRemaining??0)-(a.freeQuotaRemaining??0));
-  const list=picks.length?picks:models.filter((m:any)=>!m.isDeprecated&&isChatModel(m)).sort((a:any,b:any)=>rankModel(b.id).score-rankModel(a.id).score);
+  const picks=models.filter((m:any)=>m.isFree&&!m.isDeprecated&&isChatModel(m)&&m.id!==configured).sort((a:any,b:any)=>sortRank(a)-sortRank(b)||rankModel(b.id).score-rankModel(a.id).score||(b.freeQuotaRemaining??0)-(a.freeQuotaRemaining??0));
+  const list=picks.length?picks:models.filter((m:any)=>!m.isDeprecated&&isChatModel(m)&&m.id!==configured).sort((a:any,b:any)=>rankModel(b.id).score-rankModel(a.id).score);
   for(const m of list){if(!m.id)continue;result.push({id:p.key+'::'+m.id,platform:p.key,model:m.id,...base,score:rankModel(m.id).score});}
  }}// 全局按模型性能从高到低排序；用户显式指定的固定模型置顶（explicit 优先）
  return result.sort((a,b)=>(b.explicit?1:0)-(a.explicit?1:0)||(b.score??0)-(a.score??0));}
