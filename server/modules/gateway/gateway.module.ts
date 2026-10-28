@@ -12,7 +12,9 @@ import {LOCAL_USER_ID} from '../../local/auth';
 import {routeCompletion,type Candidate,type Attempt} from './router';
 const supported=(p:any)=>!['cloudflare','replicate','huggingface','cohere','ai21'].includes(p.key)&&p.status!=='已关停';
 const MODEL_CACHE_TTL_MS=5*60*1000; // 平台模型列表缓存 5 分钟
-const MAX_MODELS_PER_PLATFORM=5; // 每平台自动切换候选数上限
+// 非文本对话类模型（语音/图像/嵌入/重排/翻译等）不参与自动切换
+const NON_CHAT=/tts|asr|embedding|rerank|image|video|audio|s2s|realtime|livetranslate|translate|mt[-_]|character|whisper|transcri|voice|ocr/i;
+const isChatModel=(m:any)=>m.freeQuotaType?m.freeQuotaType==='Text':!NON_CHAT.test(String(m.id||''));
 interface PlatformModelsCache{ts:number;map:Map<string,{items:any[];ok:boolean}>;}
 @Injectable()
 export class GatewayService{
@@ -35,11 +37,11 @@ export class GatewayService{
   const base={key:c.apiKeyEncrypted,base:p.apiBaseUrl,auth:p.authType};
   const configured=(this.config.routes[p.key]||'').trim();
   if(configured){result.push({id:p.key+'::'+configured,platform:p.key,model:configured,...base,score:rankModel(configured).score,explicit:true});continue;}
-  // 未显式指定模型：动态取平台模型列表（文本模型优先 → 性能优先 → 剩余额度多优先），用完一个自动切下一个
+  // 未显式指定模型：动态取平台模型列表，全部免费可用文本模型按 文本优先 → 性能优先 → 剩余额度多优先 排序，用完一个自动切下一个
   const models=await this.platformModels(p);
   const sortRank=(m:any)=>(m.freeQuotaType==='Text'?0:1);
-  const picks=models.filter((m:any)=>m.isFree&&!m.isDeprecated).sort((a:any,b:any)=>sortRank(a)-sortRank(b)||rankModel(b.id).score-rankModel(a.id).score||(b.freeQuotaRemaining??0)-(a.freeQuotaRemaining??0)).slice(0,MAX_MODELS_PER_PLATFORM);
-  const list=picks.length?picks:models.filter((m:any)=>!m.isDeprecated).slice(0,MAX_MODELS_PER_PLATFORM);
+  const picks=models.filter((m:any)=>m.isFree&&!m.isDeprecated&&isChatModel(m)).sort((a:any,b:any)=>sortRank(a)-sortRank(b)||rankModel(b.id).score-rankModel(a.id).score||(b.freeQuotaRemaining??0)-(a.freeQuotaRemaining??0));
+  const list=picks.length?picks:models.filter((m:any)=>!m.isDeprecated&&isChatModel(m)).sort((a:any,b:any)=>rankModel(b.id).score-rankModel(a.id).score);
   for(const m of list){if(!m.id)continue;result.push({id:p.key+'::'+m.id,platform:p.key,model:m.id,...base,score:rankModel(m.id).score});}
  }}// 全局按模型性能从高到低排序；用户显式指定的固定模型置顶（explicit 优先）
  return result.sort((a,b)=>(b.explicit?1:0)-(a.explicit?1:0)||(b.score??0)-(a.score??0));}

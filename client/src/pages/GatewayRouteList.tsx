@@ -32,12 +32,16 @@ export default function GatewayRouteList({ modelRoutes, platforms, routes, onMod
         </p>
       )}
 
-      {/* 模型级切换顺序（按性能从高到低） */}
+      {/* 模型级切换顺序（全部免费可用模型，按性能从高到低） */}
       <div className="space-y-2" aria-label="模型切换顺序（按性能排序）">
-        {modelRoutes.length === 0 && (
-          <p className="text-gray-500">暂无正常渠道，请先在平台管理中配置并检测。</p>
-        )}
-        {modelRoutes.map((m: any, index: number) => (
+        <p className="text-xs text-gray-400">
+          全部免费可用模型按性能从高到低排序，共 {modelRoutes.length} 个；额度用尽或失败自动切换下一个。
+        </p>
+        <div className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
+          {modelRoutes.length === 0 && (
+            <p className="text-gray-500">暂无正常渠道，请先在平台管理中配置并检测。</p>
+          )}
+          {modelRoutes.map((m: any, index: number) => (
           <div
             key={m.id}
             className="flex flex-wrap items-center gap-3 rounded-lg border border-[#e4e7ed] bg-white px-4 py-2.5"
@@ -69,6 +73,7 @@ export default function GatewayRouteList({ modelRoutes, platforms, routes, onMod
             </span>
           </div>
         ))}
+        </div>
       </div>
     </div>
   );
