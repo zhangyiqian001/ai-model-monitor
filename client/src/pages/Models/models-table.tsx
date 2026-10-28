@@ -41,6 +41,19 @@ export const formatPrice = (
   return `$${price.toFixed(4)}`;
 };
 
+export const formatTokens = (n: number | undefined): string => {
+  if (n === undefined || n === null || isNaN(n)) return '-';
+  if (n >= 1_000_000) {
+    const v = n / 1_000_000;
+    return `${Number.isInteger(v) ? v : v.toFixed(2)}M`;
+  }
+  if (n >= 1_000) {
+    const v = n / 1_000;
+    return `${Number.isInteger(v) ? v : v.toFixed(1)}K`;
+  }
+  return String(n);
+};
+
 export const buildColumns = (
   onSelect: (modelId: string) => void,
 ): TableProps<ModelInfo>['columns'] => [
@@ -93,6 +106,57 @@ export const buildColumns = (
     width: 140,
     render: (_: React.ReactNode, record: ModelInfo) =>
       formatPrice(record.outputPricePerMillion, record.isFree),
+  },
+  {
+    title: '免费额度',
+    key: 'freeQuota',
+    width: 200,
+    render: (_: React.ReactNode, record: ModelInfo) => {
+      if (record.freeQuotaRemaining === undefined) {
+        return <span className="text-gray-300">-</span>;
+      }
+      const remainingPct = Math.max(
+        0,
+        Math.min(100, 100 - (record.freeQuotaUsagePercent ?? 0)),
+      );
+      const barColor =
+        remainingPct > 30
+          ? 'bg-emerald-500'
+          : remainingPct > 10
+            ? 'bg-amber-500'
+            : 'bg-red-500';
+      return (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium text-gray-700">
+              {formatTokens(record.freeQuotaRemaining)}
+            </span>
+            <span className="text-[10px] text-gray-400">
+              / {formatTokens(record.freeQuotaTotal)}
+            </span>
+            {record.freeQuotaAutoStop && (
+              <Badge
+                variant="outline"
+                className="h-4 border-amber-200 bg-amber-50 px-1 text-[9px] font-medium text-amber-600"
+              >
+                用完即停
+              </Badge>
+            )}
+          </div>
+          <div className="h-1 w-full overflow-hidden rounded bg-gray-100">
+            <div
+              className={`h-full rounded ${barColor}`}
+              style={{ width: `${remainingPct}%` }}
+            />
+          </div>
+          <span className="text-[10px] text-gray-400">
+            {record.freeQuotaExpires
+              ? `到期 ${record.freeQuotaExpires}`
+              : '长期有效'}
+          </span>
+        </div>
+      );
+    },
   },
   {
     title: '状态',

@@ -15,6 +15,7 @@ import {
   fetchVolcengineArkModels,
   extractAdapterError,
 } from './model-list-adapters';
+import { fetchBailianFreeQuota } from './bailian-free-quota';
 
 const OPENROUTER_CACHE_TTL_MS = 10 * 60 * 1000; // 10 分钟
 
@@ -133,6 +134,10 @@ export class ModelsService {
           apiKey,
           platform.authType,
         );
+        // 阿里百炼：合并官方免费额度（bl usage free），展示剩余额度/到期/用完即停
+        if (platformKey === 'bailian' && items.length > 0) {
+          items = await this.mergeBailianFreeQuota(items);
+        }
       } else if (apiType === 'gemini') {
         items = await fetchGeminiModels(apiKey);
       }
@@ -198,6 +203,52 @@ export class ModelsService {
   }
 
   // —— 私有方法 ——
+
+  /**
+   * 合并百炼官方免费额度到模型列表（按模型 ID 精确匹配，失败时尝试去日期后缀匹配）
+   */
+  private async mergeBailianFreeQuota(
+    items: ModelInfo[],
+  ): Promise<ModelInfo[]> {
+    let quotas: Awaited<ReturnType<typeof fetchBailianFreeQuota>> = null;
+    try {
+      quotas = await fetchBailianFreeQuota();
+    } catch {
+      quotas = null;
+    }
+    if (!quotas || quotas.length === 0) return items;
+
+    const exactMap = new Map<string, (typeof quotas)[number]>();
+    const strippedMap = new Map<string, (typeof quotas)[number]>();
+    for (const q of quotas) {
+      exactMap.set(q.model, q);
+      const stripped = q.model.replace(/-\d{4}$/, '');
+      if (stripped !== q.model) strippedMap.set(stripped, q);
+    }
+
+    return items.map((item) => {
+      const q =
+        exactMap.get(item.id) ??
+        strippedMap.get(item.id) ??
+        (() => {
+          const stripped = item.id.replace(/-\d{4}$/, '');
+          return exactMap.get(stripped) ?? strippedMap.get(stripped);
+        })();
+
+      if (!q) return item;
+
+      return {
+        ...item,
+        isFree: true,
+        freeQuotaRemaining: q.remaining,
+        freeQuotaTotal: q.total,
+        freeQuotaExpires: q.expires || undefined,
+        freeQuotaUsagePercent: q.usagePercent,
+        freeQuotaAutoStop: q.autoStop,
+        freeQuotaType: q.type || undefined,
+      };
+    });
+  }
 
   private buildBuiltinResponse(
     platform: PlatformInfo,

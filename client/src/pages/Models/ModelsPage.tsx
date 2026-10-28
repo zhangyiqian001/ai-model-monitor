@@ -358,7 +358,7 @@ const ModelsPage = () => {
             rowKey="id"
             loading={loading}
             pagination={false}
-            scroll={{ x: 1100, y: 500 }}
+            scroll={{ x: 1300, y: 500 }}
             size="small"
             rowClassName={(record: ModelInfo) =>
               record.isFree && !record.isDeprecated

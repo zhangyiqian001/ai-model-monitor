@@ -146,6 +146,18 @@ export interface ModelInfo {
   isAvailable?: boolean;
   pricingNote?: string;
   description?: string;
+  /** 平台免费额度：剩余额度（Token/张/秒，随模型类型而异） */
+  freeQuotaRemaining?: number;
+  /** 平台免费额度：总额度 */
+  freeQuotaTotal?: number;
+  /** 平台免费额度：到期日期 YYYY-MM-DD */
+  freeQuotaExpires?: string;
+  /** 平台免费额度：已用百分比（0-100） */
+  freeQuotaUsagePercent?: number;
+  /** 平台免费额度：用完即停开关 */
+  freeQuotaAutoStop?: boolean;
+  /** 平台免费额度：模型类型（Text/Audio/Vision/...） */
+  freeQuotaType?: string;
 }
 
 export interface ModelListResponse {
