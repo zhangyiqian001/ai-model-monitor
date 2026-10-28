@@ -42,10 +42,10 @@ const ModelsPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Filter state
+  // Filter state：默认只看免费 + 按价格升序（比价模式）
   const [keyword, setKeyword] = useState('');
   const [freeOnly, setFreeOnly] = useState(true);
-  const [availableOnly, setAvailableOnly] = useState(true);
+  const [availableOnly, setAvailableOnly] = useState(false);
   const [sortBy, setSortBy] = useState<SortKey>('input-asc');
 
   // Doubao (火山方舟) specific

@@ -1,0 +1,2 @@
+export function eligible(platform:any){return !!platform.config?.hasKey&&!!platform.config?.isEnabled&&platform.latestHealthStatus==='healthy';}
+export function orderRoutes<T extends {platform:string}>(routes:T[],order:string[]):T[]{const rank=(key:string)=>{const i=order.indexOf(key);return i<0?Number.MAX_SAFE_INTEGER:i;};return routes.map((r,i)=>({r,i})).sort((a,b)=>rank(a.r.platform)-rank(b.r.platform)||a.i-b.i).map(x=>x.r);}
