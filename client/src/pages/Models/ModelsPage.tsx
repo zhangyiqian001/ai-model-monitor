@@ -44,8 +44,8 @@ const ModelsPage = () => {
 
   // Filter state
   const [keyword, setKeyword] = useState('');
-  const [freeOnly, setFreeOnly] = useState(false);
-  const [availableOnly, setAvailableOnly] = useState(false);
+  const [freeOnly, setFreeOnly] = useState(true);
+  const [availableOnly, setAvailableOnly] = useState(true);
   const [sortBy, setSortBy] = useState<SortKey>('input-asc');
 
   // Doubao (火山方舟) specific
