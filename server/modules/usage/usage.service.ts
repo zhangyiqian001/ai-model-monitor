@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { randomUUID } from 'crypto';
+import { DRIZZLE_DATABASE, type LocalDatabase } from '../../local/db';
 import { eq, sql, and, desc, count, inArray } from 'drizzle-orm';
 import type {
   UsageQueryResponse,
@@ -23,7 +24,7 @@ export class UsageService {
   private readonly logger = new Logger(UsageService.name);
 
   constructor(
-    @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
+    @Inject(DRIZZLE_DATABASE) private readonly db: LocalDatabase,
     private readonly monitoringService: MonitoringService,
   ) {}
 
@@ -45,7 +46,7 @@ export class UsageService {
       .from(userPlatformConfigs)
       .where(
         and(
-          sql`(${userPlatformConfigs.createdBy}).user_id = ${userId}`,
+          eq(userPlatformConfigs.createdBy, userId),
           eq(userPlatformConfigs.platformKey, platformKey),
         ),
       )
@@ -93,14 +94,17 @@ export class UsageService {
 
     // Save record
     await this.db.insert(usageRecords).values({
+      id: randomUUID(),
       platformKey,
       remainingCredits: result.remainingCredits ?? null,
       usedTokens: result.usedTokens ?? null,
       rateLimitInfo: result.rateLimitInfo ?? null,
       quotaInfo: result.quotaInfo ?? null,
       recordedAt: new Date(),
-      createdBy: userId as never,
-      updatedBy: userId as never,
+      createdAt: new Date(),
+      createdBy: userId,
+      updatedAt: new Date(),
+      updatedBy: userId,
     });
 
     return result;
@@ -123,7 +127,7 @@ export class UsageService {
         .where(
           and(
             eq(usageRecords.platformKey, platformKey),
-            sql`(${usageRecords.createdBy}).user_id = ${userId}`,
+            eq(usageRecords.createdBy, userId),
           ),
         ),
       this.db
@@ -140,7 +144,7 @@ export class UsageService {
         .where(
           and(
             eq(usageRecords.platformKey, platformKey),
-            sql`(${usageRecords.createdBy}).user_id = ${userId}`,
+            eq(usageRecords.createdBy, userId),
           ),
         )
         .orderBy(desc(usageRecords.recordedAt))
@@ -174,7 +178,7 @@ export class UsageService {
         notes: userPlatformConfigs.notes,
       })
       .from(userPlatformConfigs)
-      .where(sql`(${userPlatformConfigs.createdBy}).user_id = ${userId}`);
+      .where(eq(userPlatformConfigs.createdBy, userId));
 
     const configMap = new Map<string, {
       isEnabled: boolean;
@@ -208,7 +212,7 @@ export class UsageService {
         .from(healthCheckRecords)
         .where(
           and(
-            sql`(${healthCheckRecords.createdBy}).user_id = ${userId}`,
+            eq(healthCheckRecords.createdBy, userId),
             inArray(healthCheckRecords.platformKey, configuredKeys),
           ),
         )
@@ -243,7 +247,7 @@ export class UsageService {
         .from(usageRecords)
         .where(
           and(
-            sql`(${usageRecords.createdBy}).user_id = ${userId}`,
+            eq(usageRecords.createdBy, userId),
             inArray(usageRecords.platformKey, configuredKeys),
           ),
         )

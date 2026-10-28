@@ -1,4 +1,4 @@
-import type { PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import type { LocalDatabase } from '../../local/db';
 import { sql, desc, eq, and, inArray } from 'drizzle-orm';
 import { healthCheckRecords } from '@server/database/schema';
 import type { HealthStatus } from '@shared/api.interface';
@@ -10,7 +10,7 @@ export interface LatestHealthRecord {
 }
 
 export async function getLatestHealthRecord(
-  db: PostgresJsDatabase,
+  db: LocalDatabase,
   userId: string,
   platformKey: string,
 ): Promise<LatestHealthRecord | null> {
@@ -24,7 +24,7 @@ export async function getLatestHealthRecord(
     .where(
       and(
         eq(healthCheckRecords.platformKey, platformKey),
-        sql`(${healthCheckRecords.createdBy}).user_id = ${userId}`,
+        eq(healthCheckRecords.createdBy, userId),
       ),
     )
     .orderBy(desc(healthCheckRecords.checkedAt))
@@ -34,7 +34,7 @@ export async function getLatestHealthRecord(
 }
 
 export async function getLatestHealthRecordsForPlatforms(
-  db: PostgresJsDatabase,
+  db: LocalDatabase,
   userId: string,
   platformKeys: string[],
 ): Promise<Map<string, LatestHealthRecord>> {
@@ -51,7 +51,7 @@ export async function getLatestHealthRecordsForPlatforms(
     .from(healthCheckRecords)
     .where(
       and(
-        sql`(${healthCheckRecords.createdBy}).user_id = ${userId}`,
+        eq(healthCheckRecords.createdBy, userId),
         inArray(healthCheckRecords.platformKey, platformKeys),
       ),
     )

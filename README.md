@@ -16,22 +16,32 @@
 
 ## 🚀 快速开始
 
+### 本机独立运行（推荐，零平台依赖）
+
+本仓库已改造为**本地独立版**：不再依赖豆包平台登录、平台数据库与平台内网域名，数据库使用 **SQLite**（零安装），一条命令完成编译与启动：
+
 ```bash
 # 1. 安装依赖
 npm install
 
-# 2. 启动开发环境（前端 + 后端）
-npm run dev
+# 2. 编译 + 启动（自动完成 server/client 编译，单进程监听 3000 端口）
+npm run start:local
 ```
 
-- 前端默认由 Vite 提供，后端为 NestJS 服务
-- 数据持久化依赖 PostgreSQL，首次运行请按 `server/database/schema.ts` 初始化数据库并配置连接
+启动后访问 **http://127.0.0.1:3000** 即可打开监控台。
 
-### 构建生产版本
+- 环境变量见 `.env.local`（端口、本地用户 ID、SQLite 文件路径均可修改）
+- 数据默认落在 `./data/ai-monitor.db`（SQLite，WAL 模式，刷新/重启不丢失）
+- 首次使用：进入「平台管理」为平台配置 API Key 并启用 → 一键检测 / 单平台检测 / 模型列表均可真实调用
+
+### 开发模式（可选）
 
 ```bash
-npm run build
+npm run dev:server   # 后端 NestJS（watch）
+npm run dev:client   # 前端 Vite（8080，自动反代 /api 到 3000）
 ```
+
+> 注：`npm run dev` / `scripts/dev.sh` 为平台原版启动脚本，依赖 lark-cli 与平台配置，本地请使用 `npm run start:local`。
 
 ## 🖥️ 页面结构
 
@@ -52,10 +62,13 @@ npm run build
 ## 🗂️ 目录结构
 
 ```
-client/   # React 前端（Vite）
-server/   # NestJS 后端（模块：platforms / monitoring / models / usage）
-shared/   # 前后端共享类型
-scripts/  # 开发与构建脚本
+client/            # React 前端（Vite）
+server/            # NestJS 后端（模块：platforms / monitoring / models / usage）
+server/local/      # 本地独立版基础设施（SQLite 数据库 + 本地认证，替代平台 PlatformModule）
+server/database/   # drizzle schema（SQLite 方言）
+shared/            # 前后端共享类型
+scripts/           # 开发与构建脚本（start-local.js 为本地启动入口）
+data/              # 本地 SQLite 数据文件（运行时生成）
 ```
 
 ## ⚠️ 注意事项

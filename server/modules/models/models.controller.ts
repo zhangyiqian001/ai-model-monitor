@@ -7,7 +7,7 @@ import {
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
+import { NeedLogin } from '../../local/auth';
 import { ModelsService } from './models.service';
 import type {
   ModelListResponse,

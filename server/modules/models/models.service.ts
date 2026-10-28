@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { DRIZZLE_DATABASE, type LocalDatabase } from '../../local/db';
 import { eq, sql, and } from 'drizzle-orm';
 import type {
   ModelInfo,
@@ -29,7 +29,7 @@ export class ModelsService {
   private readonly platformMap: Map<string, PlatformInfo>;
   private openRouterCache: CacheEntry | null = null;
 
-  constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {
+  constructor(@Inject(DRIZZLE_DATABASE) private readonly db: LocalDatabase) {
     this.platformMap = getPlatformMap();
   }
 
@@ -186,7 +186,7 @@ export class ModelsService {
       .from(userPlatformConfigs)
       .where(
         and(
-          sql`(${userPlatformConfigs.createdBy}).user_id = ${userId}`,
+          eq(userPlatformConfigs.createdBy, userId),
           eq(userPlatformConfigs.platformKey, platformKey),
         ),
       )

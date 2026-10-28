@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { randomUUID } from 'crypto';
+import { DRIZZLE_DATABASE, type LocalDatabase } from '../../local/db';
 import { eq, sql, and, desc, count, gte } from 'drizzle-orm';
 import type {
   DashboardStats,
@@ -19,7 +20,7 @@ const MAX_CONCURRENT_CHECKS = 5;
 export class MonitoringService {
   private readonly logger = new Logger(MonitoringService.name);
 
-  constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
+  constructor(@Inject(DRIZZLE_DATABASE) private readonly db: LocalDatabase) {}
 
   async checkPlatform(
     userId: string,
@@ -42,7 +43,7 @@ export class MonitoringService {
       .from(userPlatformConfigs)
       .where(
         and(
-          sql`(${userPlatformConfigs.createdBy}).user_id = ${userId}`,
+          eq(userPlatformConfigs.createdBy, userId),
           eq(userPlatformConfigs.platformKey, platformKey),
         ),
       )
@@ -83,14 +84,17 @@ export class MonitoringService {
 
     // Save record
     await this.db.insert(healthCheckRecords).values({
+      id: randomUUID(),
       platformKey,
       status: result.status,
       latencyMs: result.latencyMs,
       errorMessage: result.errorMessage ?? null,
       modelTested: actualModel,
       checkedAt,
-      createdBy: userId as never,
-      updatedBy: userId as never,
+      createdAt: new Date(),
+      createdBy: userId,
+      updatedAt: new Date(),
+      updatedBy: userId,
     });
 
     const response: HealthCheckResponse = {
@@ -116,7 +120,7 @@ export class MonitoringService {
       .from(userPlatformConfigs)
       .where(
         and(
-          sql`(${userPlatformConfigs.createdBy}).user_id = ${userId}`,
+          eq(userPlatformConfigs.createdBy, userId),
           eq(userPlatformConfigs.isEnabled, true),
         ),
       );
@@ -167,9 +171,7 @@ export class MonitoringService {
     const configCountResult = await this.db
       .select({ count: count() })
       .from(userPlatformConfigs)
-      .where(
-        sql`(${userPlatformConfigs.createdBy}).user_id = ${userId}`,
-      );
+      .where(eq(userPlatformConfigs.createdBy, userId));
     const configuredPlatforms = Number(configCountResult[0]?.count ?? 0);
 
     // Count enabled configs with non-empty key
@@ -178,7 +180,7 @@ export class MonitoringService {
       .from(userPlatformConfigs)
       .where(
         and(
-          sql`(${userPlatformConfigs.createdBy}).user_id = ${userId}`,
+          eq(userPlatformConfigs.createdBy, userId),
           eq(userPlatformConfigs.isEnabled, true),
           sql`length(${userPlatformConfigs.apiKeyEncrypted}) > 0`,
         ),
@@ -192,9 +194,7 @@ export class MonitoringService {
         checkedAt: healthCheckRecords.checkedAt,
       })
       .from(healthCheckRecords)
-      .where(
-        sql`(${healthCheckRecords.createdBy}).user_id = ${userId}`,
-      )
+      .where(eq(healthCheckRecords.createdBy, userId))
       .orderBy(desc(healthCheckRecords.checkedAt));
 
     const latestMap = new Map<string, { status: string; checkedAt: Date }>();
@@ -270,7 +270,7 @@ export class MonitoringService {
         .where(
           and(
             eq(healthCheckRecords.platformKey, platformKey),
-            sql`(${healthCheckRecords.createdBy}).user_id = ${userId}`,
+            eq(healthCheckRecords.createdBy, userId),
           ),
         ),
       this.db
@@ -287,7 +287,7 @@ export class MonitoringService {
         .where(
           and(
             eq(healthCheckRecords.platformKey, platformKey),
-            sql`(${healthCheckRecords.createdBy}).user_id = ${userId}`,
+            eq(healthCheckRecords.createdBy, userId),
           ),
         )
         .orderBy(desc(healthCheckRecords.checkedAt))

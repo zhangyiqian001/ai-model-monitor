@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@lark-apaas/fullstack-nestjs-core';
+import { randomUUID } from 'crypto';
+import { DRIZZLE_DATABASE, type LocalDatabase } from '../../local/db';
 import { eq, sql, and } from 'drizzle-orm';
 import type {
   PlatformInfo,
@@ -53,7 +54,7 @@ export class PlatformsService {
   private readonly logger = new Logger(PlatformsService.name);
   private readonly platformMap: Map<string, PlatformInfo>;
 
-  constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {
+  constructor(@Inject(DRIZZLE_DATABASE) private readonly db: LocalDatabase) {
     this.platformMap = getPlatformMap();
   }
 
@@ -77,7 +78,7 @@ export class PlatformsService {
         updatedAt: userPlatformConfigs.updatedAt,
       })
       .from(userPlatformConfigs)
-      .where(sql`(${userPlatformConfigs.createdBy}).user_id = ${userId}`);
+      .where(eq(userPlatformConfigs.createdBy, userId));
 
     const map = new Map<string, UserPlatformConfig>();
     for (const row of rows as ConfigRow[]) {
@@ -100,7 +101,7 @@ export class PlatformsService {
       .from(userPlatformConfigs)
       .where(
         and(
-          sql`(${userPlatformConfigs.createdBy}).user_id = ${userId}`,
+          eq(userPlatformConfigs.createdBy, userId),
           eq(userPlatformConfigs.platformKey, platformKey),
         ),
       )
@@ -123,7 +124,7 @@ export class PlatformsService {
       .from(userPlatformConfigs)
       .where(
         and(
-          sql`(${userPlatformConfigs.createdBy}).user_id = ${userId}`,
+          eq(userPlatformConfigs.createdBy, userId),
           eq(userPlatformConfigs.platformKey, platformKey),
         ),
       )
@@ -159,18 +160,17 @@ export class PlatformsService {
     const isEnabled = data.isEnabled ?? false;
     const notes = data.notes ?? null;
 
-    await this.db.execute(sql`
-      INSERT INTO user_platform_configs
-        (platform_key, api_key_encrypted, is_enabled, notes, _created_by, _updated_by)
-      VALUES (
-        ${platformKey},
-        ${apiKey},
-        ${isEnabled},
-        ${notes ?? null},
-        ROW(${userId})::user_profile,
-        ROW(${userId})::user_profile
-      )
-    `);
+    await this.db.insert(userPlatformConfigs).values({
+      id: randomUUID(),
+      platformKey,
+      apiKeyEncrypted: apiKey,
+      isEnabled,
+      notes,
+      createdAt: new Date(),
+      createdBy: userId,
+      updatedAt: new Date(),
+      updatedBy: userId,
+    });
 
     const result = await this.getConfig(userId, platformKey);
     if (!result) throw new NotFoundException('配置创建失败');
@@ -199,8 +199,9 @@ export class PlatformsService {
     }
     if (setClauses.length === 0) return;
 
-    setClauses.push(`_updated_at = CURRENT_TIMESTAMP`);
-    setClauses.push(`_updated_by = ROW(?)::user_profile`);
+    setClauses.push(`_updated_at = ?`);
+    values.push(new Date().toISOString());
+    setClauses.push(`_updated_by = ?`);
     values.push(userId);
     values.push(id);
 
@@ -215,7 +216,7 @@ export class PlatformsService {
       .set({
         ...patch,
         updatedAt: new Date(),
-        updatedBy: userId as never,
+        updatedBy: userId,
       })
       .where(eq(userPlatformConfigs.id, id));
   }
@@ -230,7 +231,7 @@ export class PlatformsService {
         apiKeyEncrypted: '',
         isEnabled: false,
         updatedAt: new Date(),
-        updatedBy: userId as never,
+        updatedBy: userId,
       })
       .where(eq(userPlatformConfigs.id, existing.id));
   }

@@ -1,18 +1,30 @@
 /* eslint-disable */
-/** auto generated, do not edit */
+/**
+ * 本地独立版 Schema（SQLite 方言）
+ *
+ * 说明：平台生成的 schema（drizzle-orm/pg-core + user_profile/file_attachment 自定义类型）
+ * 依赖 PostgreSQL 平台数据库，无法在本机独立运行。本地版改为 SQLite 结构：
+ * - 业务列名、表名与原版保持一致（usage_records / health_check_records / user_platform_configs）
+ * - _created_by / _updated_by 由 user_profile 复合类型改为普通 text（存 userId 字符串）
+ * - 时间列统一存 ISO 字符串（driver），业务层读写 Date（见 sqliteDate 自定义类型）
+ * - id 由 uuid 默认生成改为 text 主键，插入时由业务代码显式传入（crypto.randomUUID()）
+ */
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, pgTable, text, uniqueIndex, uuid, varchar, customType } from "drizzle-orm/pg-core"
+import {
+  sqliteTable,
+  text,
+  integer,
+  index,
+  customType,
+} from 'drizzle-orm/sqlite-core';
 
-export const customTimestamptz = customType<{
+/** SQLite 时间列：driver 存 ISO 字符串，业务层读写 Date */
+export const sqliteDate = customType<{
   data: Date;
   driverData: string;
-  config: { precision?: number };
 }>({
-  dataType(config) {
-    const precision = typeof config?.precision !== 'undefined'
-      ? ` (${config.precision})`
-      : '';
-    return `timestamptz${precision}`;
+  dataType() {
+    return 'text';
   },
   toDriver(value: Date | string | number) {
     if (value == null) return value as any;
@@ -21,168 +33,136 @@ export const customTimestamptz = customType<{
     if (value instanceof Date) return value.toISOString();
     throw new Error('Invalid timestamp value');
   },
-  fromDriver(value: string | Date): Date {
-    if (value instanceof Date) return value;
+  fromDriver(value: string): Date {
     return new Date(value);
   },
 });
 
-export const userProfile = customType<{
-  data: string;
-  driverData: string;
-}>({
-  dataType() {
-    return 'user_profile';
+export const usageRecords = sqliteTable(
+  'usage_records',
+  {
+    id: text('id').primaryKey(),
+    platformKey: text('platform_key', { length: 64 }).notNull(),
+    remainingCredits: text('remaining_credits', { length: 255 }),
+    usedTokens: text('used_tokens', { length: 255 }),
+    rateLimitInfo: text('rate_limit_info'),
+    quotaInfo: text('quota_info'),
+    recordedAt: sqliteDate('recorded_at').notNull(),
+    // System field: Creation time
+    createdAt: sqliteDate('_created_at').notNull(),
+    // System field: Creator
+    createdBy: text('_created_by'),
+    // System field: Update time
+    updatedAt: sqliteDate('_updated_at').notNull(),
+    // System field: Updater
+    updatedBy: text('_updated_by'),
   },
-  toDriver(value: string) {
-    return sql`ROW(${value})::user_profile`;
-  },
-  fromDriver(value: string) {
-    const [userId] = value.slice(1, -1).split(',');
-    return userId.trim();
-  },
-});
+  (table) => [
+    index('idx_usage_records_platform_recorded').on(
+      table.platformKey,
+      table.recordedAt,
+    ),
+  ],
+);
 
-export type FileAttachment = {
-  bucket_id: string;
-  file_path: string;
-};
+export const healthCheckRecords = sqliteTable(
+  'health_check_records',
+  {
+    id: text('id').primaryKey(),
+    platformKey: text('platform_key', { length: 64 }).notNull(),
+    status: text('status', { length: 32 }).notNull(),
+    latencyMs: integer('latency_ms'),
+    errorMessage: text('error_message'),
+    modelTested: text('model_tested', { length: 255 }),
+    checkedAt: sqliteDate('checked_at').notNull(),
+    // System field: Creation time
+    createdAt: sqliteDate('_created_at').notNull(),
+    // System field: Creator
+    createdBy: text('_created_by'),
+    // System field: Update time
+    updatedAt: sqliteDate('_updated_at').notNull(),
+    // System field: Updater
+    updatedBy: text('_updated_by'),
+  },
+  (table) => [
+    index('idx_health_records_platform_checked').on(
+      table.platformKey,
+      table.checkedAt,
+    ),
+    index('idx_health_records_checked_at').on(table.checkedAt),
+  ],
+);
 
-export const fileAttachment = customType<{
-  data: FileAttachment;
-  driverData: string;
-}>({
-  dataType() {
-    return 'file_attachment';
+export const userPlatformConfigs = sqliteTable(
+  'user_platform_configs',
+  {
+    id: text('id').primaryKey(),
+    platformKey: text('platform_key', { length: 64 }).notNull(),
+    apiKeyEncrypted: text('api_key_encrypted').notNull(),
+    isEnabled: integer('is_enabled', { mode: 'boolean' }).notNull().default(false),
+    notes: text('notes', { length: 500 }),
+    // System field: Creation time
+    createdAt: sqliteDate('_created_at').notNull(),
+    // System field: Creator
+    createdBy: text('_created_by'),
+    // System field: Update time
+    updatedAt: sqliteDate('_updated_at').notNull(),
+    // System field: Updater
+    updatedBy: text('_updated_by'),
   },
-  toDriver(value: FileAttachment) {
-    return sql`ROW(${value.bucket_id},${value.file_path})::file_attachment`;
-  },
-  fromDriver(value: string): FileAttachment {
-    const [bucketId, filePath] = value.slice(1, -1).split(',');
-    return { bucket_id: bucketId.trim(), file_path: filePath.trim() };
-  },
-});
+  (table) => [
+    // 本地单用户场景：无需唯一索引；如需防止重复平台配置可执行
+    // CREATE UNIQUE INDEX idx_user_platform_configs_user_platform ON user_platform_configs (_created_by, platform_key);
+  ],
+);
 
-export function escapeLiteral(str: string): string {
-  return "'" + str.replace(/'/g, "''") + "'";
-}
-
-export const userProfileArray = customType<{
-  data: string[];
-  driverData: string;
-}>({
-  dataType() {
-    return 'user_profile[]';
-  },
-  toDriver(value: string[]) {
-    if (!value || value.length === 0) {
-      return sql`'{}'::user_profile[]`;
-    }
-    const elements = value.map(id => `ROW(${escapeLiteral(id)})::user_profile`).join(',');
-    return sql.raw(`ARRAY[${elements}]::user_profile[]`);
-  },
-  fromDriver(value: string): string[] {
-    if (!value || value === '{}') return [];
-    const inner = value.slice(1, -1);
-    const matches = inner.match(/\([^)]*\)/g) || [];
-    return matches.map(m => m.slice(1, -1).split(',')[0].trim());
-  },
-});
-
-export const fileAttachmentArray = customType<{
-  data: FileAttachment[];
-  driverData: string;
-}>({
-  dataType() {
-    return 'file_attachment[]';
-  },
-  toDriver(value: FileAttachment[]) {
-    if (!value || value.length === 0) {
-      return sql`'{}'::file_attachment[]`;
-    }
-    const elements = value.map(f =>
-      `ROW(${escapeLiteral(f.bucket_id)},${escapeLiteral(f.file_path)})::file_attachment`
-    ).join(',');
-    return sql.raw(`ARRAY[${elements}]::file_attachment[]`);
-  },
-  fromDriver(value: string): FileAttachment[] {
-    if (!value || value === '{}') return [];
-    const inner = value.slice(1, -1);
-    const matches = inner.match(/\([^)]*\)/g) || [];
-    return matches.map(m => {
-      const [bucketId, filePath] = m.slice(1, -1).split(',');
-      return { bucket_id: bucketId.trim(), file_path: filePath.trim() };
-    });
-  },
-});
-
-export const usageRecords = pgTable("usage_records", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  platformKey: varchar("platform_key", { length: 64 }).notNull(),
-  remainingCredits: varchar("remaining_credits", { length: 255 }),
-  usedTokens: varchar("used_tokens", { length: 255 }),
-  rateLimitInfo: text("rate_limit_info"),
-  quotaInfo: text("quota_info"),
-  recordedAt: customTimestamptz("recorded_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
-  // System field: Creation time (auto-filled, do not modify)
-  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
-  // System field: Creator (auto-filled, do not modify)
-  createdBy: userProfile("_created_by").default(sql`CASE
-    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
-  // System field: Update time (auto-filled, do not modify)
-  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
-  // System field: Updater (auto-filled, do not modify)
-  updatedBy: userProfile("_updated_by").default(sql`CASE
-    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
-}, (table) => [
-  index("idx_usage_records_platform_recorded").on(table.platformKey, table.recordedAt),
-]);
-
-export const healthCheckRecords = pgTable("health_check_records", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  platformKey: varchar("platform_key", { length: 64 }).notNull(),
-  status: varchar("status", { length: 32 }).notNull(),
-  latencyMs: integer("latency_ms"),
-  errorMessage: text("error_message"),
-  modelTested: varchar("model_tested", { length: 255 }),
-  checkedAt: customTimestamptz("checked_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
-  // System field: Creation time (auto-filled, do not modify)
-  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
-  // System field: Creator (auto-filled, do not modify)
-  createdBy: userProfile("_created_by").default(sql`CASE
-    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
-  // System field: Update time (auto-filled, do not modify)
-  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
-  // System field: Updater (auto-filled, do not modify)
-  updatedBy: userProfile("_updated_by").default(sql`CASE
-    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
-}, (table) => [
-  index("idx_health_records_platform_checked").on(table.platformKey, table.checkedAt),
-  index("idx_health_records_checked_at").on(table.checkedAt),
-]);
-
-export const userPlatformConfigs = pgTable("user_platform_configs", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  platformKey: varchar("platform_key", { length: 64 }).notNull(),
-  apiKeyEncrypted: text("api_key_encrypted").notNull(),
-  isEnabled: boolean("is_enabled").notNull().default(false),
-  notes: varchar("notes", { length: 500 }),
-  // System field: Creation time (auto-filled, do not modify)
-  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
-  // System field: Creator (auto-filled, do not modify)
-  createdBy: userProfile("_created_by").default(sql`CASE
-    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
-  // System field: Update time (auto-filled, do not modify)
-  updatedAt: customTimestamptz("_updated_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
-  // System field: Updater (auto-filled, do not modify)
-  updatedBy: userProfile("_updated_by").default(sql`CASE
-    WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
-}, (table) => [
-  // Complex index: CREATE UNIQUE INDEX idx_user_platform_configs_user_platform ON user_platform_configs USING btree (((_created_by).user_id), platform_key),
-]);
-
-// table aliases
+// table aliases（与原版保持一致，供业务代码引用）
 export const healthCheckRecordsTable = healthCheckRecords;
 export const usageRecordsTable = usageRecords;
 export const userPlatformConfigsTable = userPlatformConfigs;
+
+// 供建表语句使用的原始 SQL（避免与 drizzle 类型系统纠缠）
+export const createTablesSql = `
+  CREATE TABLE IF NOT EXISTS "usage_records" (
+    "id" text PRIMARY KEY NOT NULL,
+    "platform_key" text(64) NOT NULL,
+    "remaining_credits" text(255),
+    "used_tokens" text(255),
+    "rate_limit_info" text,
+    "quota_info" text,
+    "recorded_at" text NOT NULL,
+    "_created_at" text NOT NULL,
+    "_created_by" text,
+    "_updated_at" text NOT NULL,
+    "_updated_by" text
+  );
+  CREATE INDEX IF NOT EXISTS "idx_usage_records_platform_recorded" ON "usage_records" ("platform_key", "recorded_at");
+
+  CREATE TABLE IF NOT EXISTS "health_check_records" (
+    "id" text PRIMARY KEY NOT NULL,
+    "platform_key" text(64) NOT NULL,
+    "status" text(32) NOT NULL,
+    "latency_ms" integer,
+    "error_message" text,
+    "model_tested" text(255),
+    "checked_at" text NOT NULL,
+    "_created_at" text NOT NULL,
+    "_created_by" text,
+    "_updated_at" text NOT NULL,
+    "_updated_by" text
+  );
+  CREATE INDEX IF NOT EXISTS "idx_health_records_platform_checked" ON "health_check_records" ("platform_key", "checked_at");
+  CREATE INDEX IF NOT EXISTS "idx_health_records_checked_at" ON "health_check_records" ("checked_at");
+
+  CREATE TABLE IF NOT EXISTS "user_platform_configs" (
+    "id" text PRIMARY KEY NOT NULL,
+    "platform_key" text(64) NOT NULL,
+    "api_key_encrypted" text NOT NULL,
+    "is_enabled" integer DEFAULT 0 NOT NULL,
+    "notes" text(500),
+    "_created_at" text NOT NULL,
+    "_created_by" text,
+    "_updated_at" text NOT NULL,
+    "_updated_by" text
+  );
+`;

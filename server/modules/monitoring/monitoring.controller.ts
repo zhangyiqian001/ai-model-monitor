@@ -8,7 +8,7 @@ import {
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
+import { NeedLogin } from '../../local/auth';
 import { MonitoringService } from './monitoring.service';
 import type {
   DashboardStats,
