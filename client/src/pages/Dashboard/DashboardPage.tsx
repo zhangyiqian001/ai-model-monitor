@@ -125,6 +125,18 @@ const DashboardPage = () => {
     [],
   );
 
+  // 排序：状态正常置顶 → 其他已配置 → 未配置置底（同组保持原顺序）
+  const sortedPlatforms = useMemo(() => {
+    const rank = (p: PlatformWithConfig): number => {
+      const notConfigured =
+        !p.config?.hasKey || p.latestHealthStatus === 'not_configured';
+      if (notConfigured) return 2;
+      if (p.latestHealthStatus === 'healthy') return 0;
+      return 1;
+    };
+    return [...platforms].sort((a, b) => rank(a) - rank(b));
+  }, [platforms]);
+
   const platformColumns: TableProps<PlatformWithConfig>['columns'] = [
     {
       title: '平台名称',
@@ -295,7 +307,7 @@ const DashboardPage = () => {
         <CardContent className="p-0">
           <Table<PlatformWithConfig>
             columns={platformColumns}
-            dataSource={platforms}
+            dataSource={sortedPlatforms}
             rowKey="key"
             pagination={false}
             scroll={{ x: 800, y: 400 }}
