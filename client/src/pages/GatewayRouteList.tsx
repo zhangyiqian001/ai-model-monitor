@@ -7,7 +7,7 @@ const tierStyle: Record<string, string> = {
   入门: 'bg-gray-50 text-gray-500 border-[#e4e7ed]',
 };
 
-export default function GatewayRouteList({ modelRoutes, platforms, routes, onModel, busy, currentModel }: any) {
+export default function GatewayRouteList({ modelRoutes, platforms, routes, onModel, busy, currentModel, onUse }: any) {
   const cooled = (m: any) => m.cooldown_until > Date.now();
   return (
     <div className="space-y-4">
@@ -80,6 +80,15 @@ export default function GatewayRouteList({ modelRoutes, platforms, routes, onMod
                 <span className="text-emerald-600">正常</span>
               )}
             </span>
+            <button
+              type="button"
+              disabled={busy || cooled(m) || m.id === currentModel}
+              onClick={() => onUse(m)}
+              className="shrink-0 rounded-md border border-[#e4e7ed] bg-white px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              title="将该模型设为固定优先，下次调用即切换到此模型"
+            >
+              {m.id === currentModel ? '使用中' : '设为当前'}
+            </button>
           </div>
         ))}
         </div>
