@@ -70,6 +70,11 @@ const ModelsPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [freeModels, setFreeModels] = useState<FreeModelRow[]>([]);
   const [freeModelsLoading, setFreeModelsLoading] = useState(false);
+  const [freeOverrides, setFreeOverrides] = useState<Record<string, boolean>>({});
+  const [testResults, setTestResults] = useState<
+    { model: string; ok: boolean; status: number; ms: number; error: string }[] | null
+  >(null);
+  const [testing, setTesting] = useState(false);
 
   // Filter state：默认只看免费 + 按价格升序（比价模式）
   const [keyword, setKeyword] = useState('');
@@ -146,6 +151,78 @@ const ModelsPage = () => {
     loadModels();
   }, [loadModels]);
 
+  // 加载当前平台的手动免费标记
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/models/platforms/${platformKey}/free-overrides`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setFreeOverrides(d ?? {});
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [platformKey]);
+
+  // 手动标记/取消模型免费
+  const handleToggleFree = useCallback(
+    async (modelId: string, next: boolean | null) => {
+      try {
+        const r = await fetch(
+          `/api/models/platforms/${platformKey}/free-override`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ modelId, isFree: next }),
+          },
+        );
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || '标记失败');
+        setFreeOverrides((prev) => {
+          const copy = { ...prev };
+          if (next === null) delete copy[modelId];
+          else copy[modelId] = next;
+          return copy;
+        });
+        toast.success(next === true ? `已手动标记 ${modelId} 为免费` : next === false ? `已强制 ${modelId} 为付费` : `已恢复 ${modelId} 自动判定`);
+        await loadModels(); // 重新拉取以反映合并后的 isFree
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error(`标记失败：${msg}`);
+      }
+    },
+    [platformKey, loadModels],
+  );
+
+  // 一键测试当前筛选列表的所有模型
+  const handleTestAll = useCallback(async () => {
+    const ids = filteredAndSorted.map((m) => m.id);
+    if (!ids.length) {
+      toast.error('当前筛选下没有可测试的模型');
+      return;
+    }
+    setTesting(true);
+    setTestResults(null);
+    try {
+      const r = await fetch('/api/gateway/test-models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: platformKey, modelIds: ids }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || '测试失败');
+      setTestResults(d.results ?? []);
+      const ok = (d.results ?? []).filter((x: any) => x.ok).length;
+      toast.success(`测试完成：${ok}/${d.total} 个模型可用`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`测试失败：${msg}`);
+    } finally {
+      setTesting(false);
+    }
+  }, [filteredAndSorted, platformKey]);
+
   // 跨平台免费模型总览（按性能排序）
   const loadFreeModels = useCallback(async () => {
     try {
@@ -213,8 +290,8 @@ const ModelsPage = () => {
   );
 
   const columns = useMemo(
-    () => buildColumns(handleSelectModel),
-    [handleSelectModel],
+    () => buildColumns(handleSelectModel, handleToggleFree, freeOverrides),
+    [handleSelectModel, handleToggleFree, freeOverrides],
   );
 
   const sourceText = useMemo(
@@ -459,6 +536,13 @@ const ModelsPage = () => {
               ))}
             </SelectContent>
           </Select>
+          <Button
+            className="h-9 bg-[#1890ff] text-white hover:bg-[#1890ff]/90"
+            onClick={handleTestAll}
+            disabled={testing || filteredAndSorted.length === 0}
+          >
+            {testing ? '测试中...' : `一键测试（${filteredAndSorted.length}）`}
+          </Button>
         </CardContent>
 
         {/* Error alert */}
@@ -490,7 +574,7 @@ const ModelsPage = () => {
             rowKey="id"
             loading={loading}
             pagination={false}
-            scroll={{ x: 1300, y: 500 }}
+            scroll={{ x: 1450, y: 500 }}
             size="small"
             rowClassName={(record: ModelInfo) =>
               record.isFree && !record.isDeprecated
@@ -500,6 +584,46 @@ const ModelsPage = () => {
           />
         </CardContent>
       </Card>
+
+      {/* 一键测试结果 */}
+      {testResults && (
+        <Card className="rounded-lg border-[#e4e7ed] bg-white shadow-sm">
+          <CardHeader className="p-5 pb-3">
+            <CardTitle className="text-base font-semibold">
+              {currentPlatformName} · 批量测试结果
+              <span className="ml-2 text-xs font-normal text-gray-400">
+                {testResults.filter((x) => x.ok).length}/{testResults.length} 可用
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="max-h-[420px] overflow-y-auto p-5 pt-0">
+            <div className="space-y-1">
+              {testResults.map((t) => (
+                <div
+                  key={t.model}
+                  className="flex flex-wrap items-center gap-3 rounded-lg border border-[#e4e7ed] px-3 py-1.5 text-sm"
+                >
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${t.ok ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                  <code className="min-w-0 flex-1 truncate font-mono text-xs text-gray-600">
+                    {t.model}
+                  </code>
+                  <span className={`shrink-0 text-xs font-medium ${t.ok ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {t.ok ? '可用' : '失败'}
+                  </span>
+                  <span className="w-16 shrink-0 text-right text-xs text-gray-400">
+                    {t.ms}ms{t.status ? ` · HTTP ${t.status}` : ''}
+                  </span>
+                  {!t.ok && t.error && (
+                    <span className="w-full truncate text-[11px] text-gray-400">
+                      {t.error}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

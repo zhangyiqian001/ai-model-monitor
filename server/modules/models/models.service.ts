@@ -16,12 +16,49 @@ import {
   extractAdapterError,
 } from './model-list-adapters';
 import { fetchBailianFreeQuota } from './bailian-free-quota';
+import fs from 'fs';
+import path from 'path';
 
 const OPENROUTER_CACHE_TTL_MS = 10 * 60 * 1000; // 10 分钟
 
 interface CacheEntry {
   items: ModelInfo[];
   timestamp: number;
+}
+
+/** 手动免费标记存储文件：data/model-free-overrides.json，结构 { "platform::model": boolean } */
+const overrideFilePath = () =>
+  path.join(process.env.GATEWAY_DATA_DIR || path.join(process.cwd(), 'data'), 'model-free-overrides.json');
+
+export function readFreeOverrides(): Record<string, boolean> {
+  try {
+    if (!fs.existsSync(overrideFilePath())) return {};
+    return JSON.parse(fs.readFileSync(overrideFilePath(), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+export function writeFreeOverride(platformKey: string, modelId: string, isFree: boolean | null): void {
+  const file = overrideFilePath();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const all = readFreeOverrides();
+  const key = `${platformKey}::${modelId}`;
+  if (isFree === null) delete all[key];
+  else all[key] = isFree;
+  fs.writeFileSync(file + '.tmp', JSON.stringify(all, null, 2), { mode: 0o600 });
+  fs.renameSync(file + '.tmp', file);
+}
+
+/** 合并手动免费标记到模型列表；返回带 freeOverride 状态（true=手动免费，false=手动取消免费，undefined=未手动标记） */
+export function mergeFreeOverrides(items: ModelInfo[], platformKey: string): ModelInfo[] {
+  const all = readFreeOverrides();
+  if (!items.length || Object.keys(all).length === 0) return items;
+  return items.map((m) => {
+    const override = all[`${platformKey}::${m.id}`];
+    if (override === undefined) return m;
+    return { ...m, isFree: override, freeOverride: override };
+  });
 }
 
 @Injectable()

@@ -9,7 +9,8 @@ import {PlatformsService} from '../platforms/platforms.service';
 import {ModelsModule} from '../models/models.module';
 import {ModelsService} from '../models/models.service';
 import {LOCAL_USER_ID} from '../../local/auth';
-import {routeCompletion,type Candidate,type Attempt} from './router';
+import {routeCompletion,invoke,type Candidate,type Attempt} from './router';
+import {mergeFreeOverrides} from '../models/models.service';
 const supported=(p:any)=>!['cloudflare','replicate','huggingface','cohere','ai21'].includes(p.key)&&p.status!=='已关停';
 const MODEL_CACHE_TTL_MS=5*60*1000; // 平台模型列表缓存 5 分钟
 // 非文本对话类模型（语音/图像/嵌入/重排/翻译等）不参与自动切换
@@ -30,8 +31,8 @@ export class GatewayService{
   const now=Date.now();
   if(!this.modelCache||now-this.modelCache.ts>=MODEL_CACHE_TTL_MS)this.modelCache={ts:now,map:new Map()};
   const hit=this.modelCache.map.get(p.key);
-  if(hit)return hit.ok?hit.items:[];
-  try{const res=await this.models.getPlatformModels(LOCAL_USER_ID,p.key);this.modelCache.map.set(p.key,{items:res.items,ok:true});return res.items;}catch{this.modelCache.map.set(p.key,{items:[],ok:false});return [];}
+  if(hit)return mergeFreeOverrides(hit.ok?hit.items:[],p.key);
+  try{const res=await this.models.getPlatformModels(LOCAL_USER_ID,p.key);this.modelCache.map.set(p.key,{items:res.items,ok:true});return mergeFreeOverrides(res.items,p.key);}catch{this.modelCache.map.set(p.key,{items:[],ok:false});return [];}
  }
  async candidates(){const result:Candidate[]=[];const status=await this.platforms.listPlatformsWithConfig(LOCAL_USER_ID,{});for(const p of status.items){if(!supported(p)||!eligible(p))continue;const c=await this.platforms.getRawConfig(LOCAL_USER_ID,p.key);if(c?.isEnabled&&c.apiKeyEncrypted){
   const base={key:c.apiKeyEncrypted,base:p.apiBaseUrl,auth:p.authType};
@@ -70,6 +71,8 @@ export class GatewayController{
  @Post('api/gateway/key')key(@Req()req:Request,@Res()res:Response){if(!this.local(req))return res.status(403).json({error:'仅允许本机管理'});res.setHeader('Cache-Control','no-store');return res.json({key:this.gateway.config.apiKey});}
  @Put('api/gateway/config')config(@Req()req:Request,@Body()body:any,@Res()res:Response){if(!this.local(req))return res.status(403).json({error:'仅允许本机管理'});const valid=this.gateway['platforms'].getAllPlatforms().map(p=>p.key);if(!body||!Array.isArray(body.order)||body.order.some((k:any)=>!valid.includes(k))||!body.routes||typeof body.routes!=='object'||Array.isArray(body.routes)||Object.entries(body.routes).some(([k,v])=>!valid.includes(k)||typeof v!=='string'||v.length>200))return res.status(400).json({error:'渠道顺序或模型格式不正确'});this.gateway.config.order=[...new Set(body.order)] as string[];this.gateway.config.routes=body.routes;this.gateway.save();return res.json({ok:true});}
  @Post('api/gateway/reset')reset(@Req()req:Request,@Body()body:any,@Res()res:Response){if(!this.local(req)||body?.confirm!==true)return res.status(403).json({error:'需要本机明确确认'});this.gateway.cooldowns={};fs.writeFileSync(path.join(this.gateway.directory,'gateway-state.json'),'{}');return res.json({ok:true});}
+ /** 一键测试：对指定平台的一组模型逐个发最小请求，返回可用性（并发4，单模型10s超时） */
+ @Post('api/gateway/test-models')async testModels(@Req()req:Request,@Res()res:Response,@Body()body:any){if(!this.local(req))return res.status(403).json({error:'仅允许本机管理'});const platform=body?.platform,modelIds=body?.modelIds;if(typeof platform!=='string'||!Array.isArray(modelIds)||!modelIds.length||modelIds.length>200)return res.status(400).json({error:'platform 与 modelIds 必填（≤200个）'});const p=this.gateway['platforms'].getAllPlatforms().find(x=>x.key===platform);if(!p)return res.status(404).json({error:'平台不存在'});const cfg=await this.gateway['platforms'].getRawConfig(LOCAL_USER_ID,platform);if(!cfg?.isEnabled||!cfg.apiKeyEncrypted)return res.status(400).json({error:'平台未配置或未启用'});const base={key:cfg.apiKeyEncrypted,base:p.apiBaseUrl,auth:p.authType};const input={model:'',messages:[{role:'user',content:'ping'}],max_tokens:5};const results:any[]=[];let idx=0;const worker=async()=>{while(idx<modelIds.length){const model=modelIds[idx++];const start=Date.now();let r:any={model,ok:false,status:0,ms:0,error:''};try{const resp=await invoke({id:platform+'::'+model,platform,model,...base},input,AbortSignal.timeout(10000));r={model,ok:resp.status>=200&&resp.status<300&&!resp.data?.error,status:resp.status,ms:Date.now()-start,error:resp.data?.error?.message||resp.data?.error?.code||''};}catch(e:any){r={model,ok:false,status:0,ms:Date.now()-start,error:(e?.name==='TimeoutError'||e?.name==='AbortError')?'超时':String(e?.message||e)};}results.push(r);}};await Promise.all(Array.from({length:Math.min(4,modelIds.length)},()=>worker()));results.sort((a,b)=>modelIds.indexOf(a.model)-modelIds.indexOf(b.model));res.setHeader('Cache-Control','no-store');return res.json({platform,total:modelIds.length,results});}
  @Get('v1/models')async models(@Req()req:Request,@Res()res:Response){if(!this.gateway.auth(req))return res.status(401).json({error:{message:'API Key 无效'}});const state=await this.gateway.state();return res.json({object:'list',data:[{id:'auto',object:'model',owned_by:'gateway'},...state.routes.map(c=>({id:c.id,object:'model',owned_by:c.platform}))]});}
  @Post('v1/chat/completions')async chat(@Req()req:Request,@Body()body:any,@Res()res:Response){if(!this.gateway.auth(req))return res.status(401).json({error:{message:'API Key 无效'}});try{return res.status(200).json(await this.gateway.chat(body));}catch(e:any){return res.status(e.status||500).json({error:{message:e.status?e.message:'网关内部错误',attempts:e.attempts||[]}});}}
 }

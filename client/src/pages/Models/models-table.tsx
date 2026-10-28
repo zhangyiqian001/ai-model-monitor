@@ -56,6 +56,8 @@ export const formatTokens = (n: number | undefined): string => {
 
 export const buildColumns = (
   onSelect: (modelId: string) => void,
+  onToggleFree?: (modelId: string, next: boolean | null) => void,
+  freeOverrides?: Record<string, boolean>,
 ): TableProps<ModelInfo>['columns'] => [
   {
     title: '模型 ID',
@@ -177,6 +179,35 @@ export const buildColumns = (
           可用
         </Badge>
       ),
+  },
+  {
+    title: '免费标记',
+    key: 'freeOverride',
+    width: 110,
+    render: (_: React.ReactNode, record: ModelInfo) => {
+      const ov = freeOverrides?.[record.id];
+      return (
+        <Button
+          variant="outline"
+          size="sm"
+          className={
+            ov === true
+              ? 'h-7 border-emerald-200 bg-emerald-50 text-xs text-emerald-700 hover:bg-emerald-100'
+              : 'h-7 text-xs'
+          }
+          onClick={() => onToggleFree?.(record.id, ov === true ? false : ov === false ? null : true)}
+          title={
+            ov === true
+              ? '取消手动免费标记'
+              : ov === false
+                ? '恢复自动判定'
+                : '手动标记此模型为免费'
+          }
+        >
+          {ov === true ? '取消免费' : ov === false ? '恢复' : '标记免费'}
+        </Button>
+      );
+    },
   },
   {
     title: '操作',

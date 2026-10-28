@@ -158,6 +158,8 @@ export interface ModelInfo {
   freeQuotaAutoStop?: boolean;
   /** 平台免费额度：模型类型（Text/Audio/Vision/...） */
   freeQuotaType?: string;
+  /** 手动免费标记：true=用户标记免费，false=用户取消免费，undefined=未手动标记 */
+  freeOverride?: boolean;
 }
 
 export interface ModelListResponse {
