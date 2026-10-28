@@ -12,6 +12,8 @@ const navItems = [
 const Layout = () => {
   const location = useLocation();
   const profile = useCurrentUserProfile();
+  const isLocal = typeof window !== 'undefined' && !(window as unknown as { __platform__?: { appId?: string } }).__platform__?.appId;
+  const displayName = isLocal ? '本地模式' : (profile?.userName ?? '未登录');
 
   const pageTitle = useMemo(() => {
     if (location.pathname === '/' || location.pathname === '') return '总览仪表盘';
@@ -57,12 +59,12 @@ const Layout = () => {
         </nav>
         <div className="border-t border-[#e4e7ed] p-3">
           <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-200 text-xs font-medium text-gray-600">
-              {profile?.userName?.charAt(0) ?? 'U'}
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-medium text-emerald-700">
+              {isLocal ? '本' : (profile?.userName?.charAt(0) ?? 'U')}
             </div>
             <div className="flex min-w-0 flex-col">
               <span className="truncate text-sm font-medium text-gray-800">
-                {profile?.userName ?? '未登录'}
+                {displayName}
               </span>
             </div>
           </div>
@@ -75,8 +77,8 @@ const Layout = () => {
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-[#e4e7ed] bg-white px-6">
           <h1 className="text-base font-semibold text-gray-800">{pageTitle}</h1>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-500">
-              {profile?.userName ?? '未登录'}
+            <span className={`text-sm ${isLocal ? 'font-medium text-emerald-600' : 'text-gray-500'}`}>
+              {displayName}
             </span>
           </div>
         </header>
