@@ -7,7 +7,7 @@ const tierStyle: Record<string, string> = {
   入门: 'bg-gray-50 text-gray-500 border-[#e4e7ed]',
 };
 
-export default function GatewayRouteList({ modelRoutes, platforms, routes, onModel, busy }: any) {
+export default function GatewayRouteList({ modelRoutes, platforms, routes, onModel, busy, currentModel }: any) {
   const cooled = (m: any) => m.cooldown_until > Date.now();
   return (
     <div className="space-y-4">
@@ -44,13 +44,22 @@ export default function GatewayRouteList({ modelRoutes, platforms, routes, onMod
           {modelRoutes.map((m: any, index: number) => (
           <div
             key={m.id}
-            className="flex flex-wrap items-center gap-3 rounded-lg border border-[#e4e7ed] bg-white px-4 py-2.5"
+            className={`flex flex-wrap items-center gap-3 rounded-lg border bg-white px-4 py-2.5 ${
+              m.id === currentModel
+                ? 'border-emerald-300 bg-emerald-50/60'
+                : 'border-[#e4e7ed]'
+            }`}
           >
             <span className="w-6 shrink-0 text-center text-sm text-gray-400">{index + 1}</span>
             <span className="w-20 shrink-0 truncate text-sm font-medium text-gray-700">
               {m.platform}
             </span>
             <code className="min-w-0 flex-1 truncate text-sm text-gray-600">{m.model}</code>
+            {m.id === currentModel && (
+              <span className="shrink-0 rounded bg-emerald-600 px-1.5 py-0.5 text-[11px] font-medium text-white">
+                当前使用
+              </span>
+            )}
             <span
               className={`shrink-0 rounded border px-1.5 py-0.5 text-[11px] font-medium ${tierStyle[m.tier] ?? tierStyle['入门']}`}
               title={`性能评分 ${m.score}`}
