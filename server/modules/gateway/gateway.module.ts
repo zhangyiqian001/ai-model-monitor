@@ -70,7 +70,7 @@ export class GatewayService{
   if(input.temperature!==undefined&&(!Number.isFinite(input.temperature)||input.temperature<0||input.temperature>2))throw Object.assign(new Error('temperature 需为 0–2'),{status:400});
   if(input.tools!==undefined&&(!Array.isArray(input.tools)||!input.tools.length||input.tools.length>64||input.tools.some((t:any)=>!t||t.type!=='function'||!t.function||typeof t.function.name!=='string'||!t.function.name)))throw Object.assign(new Error('tools 需为 function 定义数组（type=function 且含 function.name）'),{status:400});
   if(input.tool_choice!==undefined&&typeof input.tool_choice!=='string'&&(!input.tool_choice||input.tool_choice.type!=='function'||!input.tool_choice.function||typeof input.tool_choice.function.name!=='string'))throw Object.assign(new Error('tool_choice 需为 auto/none/required 或 {type:"function",function:{name}}'),{status:400});
-  if(Object.keys(input).some(k=>!['model','messages','stream','max_tokens','temperature','tools','tool_choice'].includes(k)))throw Object.assign(new Error('暂不支持多模态或其他扩展参数（reasoning_effort/response_format 等）'),{status:400});
+  // 宽容策略：未知扩展参数（reasoning_effort/response_format/seed/stream_options 等）忽略不报错，仅透传受支持字段
   if(input.messages.some((m:any)=>m.role==='developer'))input.messages=input.messages.map((m:any)=>m.role==='developer'?{...m,role:'system'}:m);
   let candidates=await this.candidates();
   if(input.model!=='auto')candidates=candidates.filter(c=>c.id===input.model);
