@@ -73,7 +73,7 @@ export class GatewayService{
   // 宽容策略：未知扩展参数（reasoning_effort/response_format/seed/stream_options 等）忽略不报错，仅透传受支持字段
   if(input.messages.some((m:any)=>m.role==='developer'))input.messages=input.messages.map((m:any)=>m.role==='developer'?{...m,role:'system'}:m);
   let candidates=await this.candidates();
-  if(input.model!=='auto')candidates=candidates.filter(c=>c.id===input.model);
+  if(input.model!=='auto'){const idx=candidates.findIndex(c=>c.id===input.model);if(idx>=0){const [picked]=candidates.splice(idx,1);candidates.unshift(picked);}}
   if(!candidates.length)throw Object.assign(new Error('没有检测正常且已启用的兼容模型，或模型 ID 不存在'),{status:404});
   try{const payload=await routeCompletion(candidates,input,this.cooldowns,a=>{this.logs.push(a);this.logs=this.logs.slice(-300);fs.writeFileSync(path.join(this.directory,'gateway-log.json'),JSON.stringify(this.logs),{mode:0o600});});return {stream,payload};}finally{fs.writeFileSync(path.join(this.directory,'gateway-state.json'),JSON.stringify(this.cooldowns),{mode:0o600});}}
 }
