@@ -12,7 +12,7 @@ export default function GatewayRouteList({ modelRoutes, busy, currentModel, onUs
   return (
     <div className="space-y-2" aria-label="模型切换顺序（按性能排序）">
       <p className="text-xs text-gray-400">
-        全部免费可用模型按性能从高到低排序，共 {modelRoutes.length} 个；点击「设为当前」可指定优先使用该模型，额度用尽或失败后自动按原排序继续切换。
+        全部免费可用模型按性能从高到低排序，共 {modelRoutes.length} 个；点击「设为当前」即设为全局唯一当前使用（与平台无关），额度用尽或失败后自动按原排序继续切换。
       </p>
       <div className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
         {modelRoutes.length === 0 && (
@@ -60,12 +60,12 @@ export default function GatewayRouteList({ modelRoutes, busy, currentModel, onUs
             <button
               type="button"
               disabled={busy || (m.id !== currentModel && !m.explicit && cooled(m))}
-              onClick={() => (m.explicit ? onClear(m.platform) : onUse(m))}
+              onClick={() => (m.explicit ? onClear() : onUse(m))}
               className="shrink-0 rounded-md border border-[#e4e7ed] bg-white px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
               title={
                 m.explicit
                   ? '取消指定，恢复按性能自动排序'
-                  : '指定优先使用该模型，下次调用生效，用完自动回落排序'
+                  : '设为全局唯一当前使用，下次调用生效，用完自动回落排序'
               }
             >
               {m.id === currentModel ? '使用中' : m.explicit ? '取消指定' : '设为当前'}
