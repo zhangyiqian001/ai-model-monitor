@@ -111,7 +111,17 @@ const ModelsPage = () => {
         setPlatformsLoading(true);
         const res = await platformsApi.getPlatforms();
         if (!cancelled) {
-          setPlatforms(res.items as unknown as PlatformInfo[]);
+          const all = res.items as unknown as PlatformInfo[];
+          setPlatforms(all);
+          // 只显示已配置 key 且启用的平台；当前选中不在其中时自动切到第一个可用平台
+          const usable = (all as any[]).filter(
+            (p) => p.config?.hasKey && p.config?.isEnabled,
+          );
+          const currentOk = usable.some((p) => p.key === platformKey);
+          if (!currentOk && usable.length > 0) {
+            setPlatformKey(usable[0].key);
+            setSearchParams({ platform: usable[0].key }, { replace: true });
+          }
         }
       } catch (err) {
         logger.error('load platforms failed', { error: String(err) });
@@ -122,7 +132,16 @@ const ModelsPage = () => {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 已配置 key 且未停用的平台（下拉只显示这些）
+  const usablePlatforms = useMemo(() => {
+    const usable = (platforms as any[]).filter(
+      (p) => p.config?.hasKey && p.config?.isEnabled,
+    );
+    return usable as PlatformInfo[];
+  }, [platforms]);
 
   // Load models when platform changes
   const loadModels = useCallback(async () => {
@@ -195,33 +214,6 @@ const ModelsPage = () => {
     [platformKey, loadModels],
   );
 
-  // 一键测试当前筛选列表的所有模型
-  const handleTestAll = useCallback(async () => {
-    const ids = filteredAndSorted.map((m) => m.id);
-    if (!ids.length) {
-      toast.error('当前筛选下没有可测试的模型');
-      return;
-    }
-    setTesting(true);
-    setTestResults(null);
-    try {
-      const r = await fetch('/api/gateway/test-models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ platform: platformKey, modelIds: ids }),
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || '测试失败');
-      setTestResults(d.results ?? []);
-      const ok = (d.results ?? []).filter((x: any) => x.ok).length;
-      toast.success(`测试完成：${ok}/${d.total} 个模型可用`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error(`测试失败：${msg}`);
-    } finally {
-      setTesting(false);
-    }
-  }, [filteredAndSorted, platformKey]);
 
   // 跨平台免费模型总览（按性能排序）
   const loadFreeModels = useCallback(async () => {
@@ -271,6 +263,34 @@ const ModelsPage = () => {
       }),
     [modelData, keyword, freeOnly, availableOnly, sortBy],
   );
+
+  // 一键测试当前筛选列表的所有模型
+  const handleTestAll = useCallback(async () => {
+    const ids = filteredAndSorted.map((m) => m.id);
+    if (!ids.length) {
+      toast.error('当前筛选下没有可测试的模型');
+      return;
+    }
+    setTesting(true);
+    setTestResults(null);
+    try {
+      const r = await fetch('/api/gateway/test-models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: platformKey, modelIds: ids }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || '测试失败');
+      setTestResults(d.results ?? []);
+      const ok = (d.results ?? []).filter((x: any) => x.ok).length;
+      toast.success(`测试完成：${ok}/${d.total} 个模型可用`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`测试失败：${msg}`);
+    } finally {
+      setTesting(false);
+    }
+  }, [filteredAndSorted, platformKey]);
 
   const handleSelectModel = useCallback(
     (modelId: string) => {
@@ -338,10 +358,12 @@ const ModelsPage = () => {
                 />
               </SelectTrigger>
               <SelectContent className="z-50" sideOffset={4} align="start">
-                <SelectItem value="openrouter">
-                  OpenRouter（全量模型比价，推荐）
-                </SelectItem>
-                {platforms.map((p: PlatformInfo) => (
+                {usablePlatforms.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-gray-400">
+                    暂无已配置且启用的平台
+                  </div>
+                )}
+                {usablePlatforms.map((p: PlatformInfo) => (
                   <SelectItem key={p.key} value={p.key}>
                     {p.name}
                   </SelectItem>
@@ -349,7 +371,7 @@ const ModelsPage = () => {
               </SelectContent>
             </Select>
             <span className="text-xs text-gray-400">
-              共 {platformsLoading ? '...' : platforms.length + 1} 个平台
+              共 {platformsLoading ? '...' : usablePlatforms.length} 个已配置平台
             </span>
           </div>
         </CardContent>
