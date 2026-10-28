@@ -7,41 +7,18 @@ const tierStyle: Record<string, string> = {
   入门: 'bg-gray-50 text-gray-500 border-[#e4e7ed]',
 };
 
-export default function GatewayRouteList({ modelRoutes, platforms, routes, onModel, busy, currentModel, onUse }: any) {
+export default function GatewayRouteList({ modelRoutes, busy, currentModel, onUse, onClear }: any) {
   const cooled = (m: any) => m.cooldown_until > Date.now();
   return (
-    <div className="space-y-4">
-      {/* 固定模型设置（平台级） */}
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-        {platforms.map((platform: string) => (
-          <label key={platform} className="flex min-w-0 items-center gap-2 text-sm">
-            <span className="w-20 shrink-0 truncate text-gray-500">{platform}</span>
-            <input
-              className="w-full rounded-md border border-[#e4e7ed] px-3 py-2 text-sm"
-              aria-label={`${platform} 固定模型 ID`}
-              placeholder="留空 = 按性能自动选择"
-              value={routes[platform] ?? ''}
-              onChange={(e) => onModel(platform, e.target.value)}
-            />
-          </label>
-        ))}
-      </div>
-      {platforms.length > 0 && (
-        <p className="text-xs text-gray-400">
-          在输入框填写模型 ID 可固定使用该模型，固定模型在所有自动候选之前优先尝试。
-        </p>
-      )}
-
-      {/* 模型级切换顺序（全部免费可用模型，按性能从高到低） */}
-      <div className="space-y-2" aria-label="模型切换顺序（按性能排序）">
-        <p className="text-xs text-gray-400">
-          全部免费可用模型按性能从高到低排序，共 {modelRoutes.length} 个；额度用尽或失败自动切换下一个。
-        </p>
-        <div className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
-          {modelRoutes.length === 0 && (
-            <p className="text-gray-500">暂无正常渠道，请先在平台管理中配置并检测。</p>
-          )}
-          {modelRoutes.map((m: any, index: number) => (
+    <div className="space-y-2" aria-label="模型切换顺序（按性能排序）">
+      <p className="text-xs text-gray-400">
+        全部免费可用模型按性能从高到低排序，共 {modelRoutes.length} 个；点击「设为当前」可指定优先使用该模型，额度用尽或失败后自动按原排序继续切换。
+      </p>
+      <div className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
+        {modelRoutes.length === 0 && (
+          <p className="text-gray-500">暂无正常渠道，请先在平台管理中配置并检测。</p>
+        )}
+        {modelRoutes.map((m: any, index: number) => (
           <div
             key={m.id}
             className={`flex flex-wrap items-center gap-3 rounded-lg border bg-white px-4 py-2.5 ${
@@ -68,7 +45,7 @@ export default function GatewayRouteList({ modelRoutes, platforms, routes, onMod
             </span>
             {m.explicit && (
               <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 border border-amber-200">
-                固定
+                已指定
               </span>
             )}
             <span className="w-24 shrink-0 text-right text-xs text-gray-400">
@@ -82,16 +59,19 @@ export default function GatewayRouteList({ modelRoutes, platforms, routes, onMod
             </span>
             <button
               type="button"
-              disabled={busy || cooled(m) || m.id === currentModel}
-              onClick={() => onUse(m)}
+              disabled={busy || (m.id !== currentModel && !m.explicit && cooled(m))}
+              onClick={() => (m.explicit ? onClear(m.platform) : onUse(m))}
               className="shrink-0 rounded-md border border-[#e4e7ed] bg-white px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-              title="将该模型设为固定优先，下次调用即切换到此模型"
+              title={
+                m.explicit
+                  ? '取消指定，恢复按性能自动排序'
+                  : '指定优先使用该模型，下次调用生效，用完自动回落排序'
+              }
             >
-              {m.id === currentModel ? '使用中' : '设为当前'}
+              {m.id === currentModel ? '使用中' : m.explicit ? '取消指定' : '设为当前'}
             </button>
           </div>
         ))}
-        </div>
       </div>
     </div>
   );
