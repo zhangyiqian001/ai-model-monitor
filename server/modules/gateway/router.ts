@@ -29,7 +29,8 @@ export async function invoke(c:Candidate,input:any,signal:AbortSignal){
   let text:string|undefined;
   if(c.platform==='gemini'){text=data.candidates?.[0]?.content?.parts?.map((p:any)=>p.text||'').join('');data={choices:[{message:{role:'assistant',content:text},finish_reason:'stop'}],usage:{prompt_tokens:data.usageMetadata?.promptTokenCount||0,completion_tokens:data.usageMetadata?.candidatesTokenCount||0}};}
   if(c.platform==='anthropic'){text=data.content?.filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('');data={choices:[{message:{role:'assistant',content:text},finish_reason:data.stop_reason==='max_tokens'?'length':'stop'}],usage:{prompt_tokens:data.usage?.input_tokens||0,completion_tokens:data.usage?.output_tokens||0}};}
-  if(typeof data.choices?.[0]?.message?.content!=='string'||!data.choices[0].message.content.trim())return {status:502,data:{error:{code:'empty_response'}},retryAfter:null};
+  const msg=data.choices?.[0]?.message||{};
+  if(typeof msg.content!=='string'||(!msg.content.trim()&&!String(msg.reasoning_content||'').trim()))return {status:502,data:{error:{code:'empty_response'}},retryAfter:null};
  }
  return {status:r.ok&&data?.error?400:r.status,data,retryAfter:r.headers.get('retry-after')};
 }
