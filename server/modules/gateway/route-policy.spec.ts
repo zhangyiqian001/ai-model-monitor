@@ -1,0 +1,5 @@
+import {eligible,orderRoutes} from './route-policy';
+describe('automatic healthy route membership',()=>{
+ test('only configured enabled healthy platforms join; recovery automatically rejoins',()=>{const p={config:{hasKey:true,isEnabled:true},latestHealthStatus:'healthy'};expect(eligible(p)).toBe(true);for(const status of ['not_configured','quota_exceeded','invalid_key','network_error','timeout','disabled'])expect(eligible({...p,latestHealthStatus:status})).toBe(false);expect(eligible({...p,config:{hasKey:true,isEnabled:false}})).toBe(false);expect(eligible({...p,config:{hasKey:false,isEnabled:true}})).toBe(false);p.latestHealthStatus='healthy';expect(eligible(p)).toBe(true);});
+ test('saved drag order survives temporary removal and new healthy routes append',()=>{const a={platform:'a'},b={platform:'b'},c={platform:'c'};const saved=['b','a'];expect(orderRoutes([a,b,c],saved)).toEqual([b,a,c]);expect(orderRoutes([a,c],saved)).toEqual([a,c]);expect(orderRoutes([a,b,c],saved)).toEqual([b,a,c]);});
+});

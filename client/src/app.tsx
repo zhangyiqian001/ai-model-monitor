@@ -1,3 +1,4 @@
+import GatewayPage from './pages/GatewayPage';
 import React from 'react';
 import { Route, Routes } from 'react-router-dom';
 
@@ -15,6 +16,7 @@ const RoutesComponent = () => {
         <Route index element={<DashboardPage />} />
         <Route path="platforms" element={<PlatformsPage />} />
         <Route path="platforms/:platformKey" element={<PlatformDetailPage />} />
+        <Route path="gateway" element={<GatewayPage />} />
         <Route path="models" element={<ModelsPage />} />
       </Route>
       <Route path="*" element={<NotFound />} />

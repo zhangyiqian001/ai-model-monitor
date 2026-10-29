@@ -1,3 +1,4 @@
+import {GatewayModule} from './modules/gateway/gateway.module';
 import { APP_FILTER } from '@nestjs/core';
 import { Module } from '@nestjs/common';
 
@@ -15,6 +16,7 @@ import { ModelsModule } from './modules/models/models.module';
     // （原版依赖平台登录/授权/平台数据库/平台内网域名，无法本机独立运行）
     LocalModule,
     // ====== @route-section: business-modules START ======
+    GatewayModule,
     PlatformsModule,
     MonitoringModule,
     UsageModule,
